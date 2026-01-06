@@ -1997,20 +1997,103 @@ app.delete("/api/finance/:id", async (req, res) => {
 // ⭐ GET MATCHED PROPERTIES FOR CUSTOMER (SMART MATCHING)
 // ⭐ GET MATCHED PROPERTIES FOR CUSTOMER (WITH MATCH REASONS)
 //GET MATCHED PROPERTIES FOR CUSTOMER
+// app.get("/api/customers/:id/matched-properties", async (req, res) => {
+//   const { id } = req.params;
+
+//   try {
+//     const customerResult = await db.query(
+//       `
+//       SELECT 
+//         budget_min,
+//         budget_max,
+//         LOWER(preferred_location) AS preferred_location,
+//         LOWER(property_type) AS property_type,
+//         LOWER(requirement_details) AS requirement_details
+//       FROM customers
+//       WHERE customer_id=$1
+//       `,
+//       [id]
+//     );
+
+//     if (!customerResult.rows.length) {
+//       return res.status(404).json({ message: "Customer not found" });
+//     }
+
+//     const {
+//       budget_min,
+//       budget_max,
+//       preferred_location,
+//       property_type,
+//       requirement_details
+//     } = customerResult.rows[0];
+
+//     const propertySql = `
+//      SELECT 
+//   p.property_id,
+//   p.property_name AS title,
+//   p.property_type,
+//   p.price,
+//   p.area_value,
+//   p.area_unit,
+//   p.mandal,
+//   p.district,
+//   p.address,
+//   p.availability,
+
+//   CASE WHEN LOWER(p.mandal) = $1 THEN 1 ELSE 0 END AS mandal_match,
+//   CASE WHEN LOWER(p.district) = $2 THEN 1 ELSE 0 END AS district_match,
+//   CASE WHEN LOWER(p.property_type) = $3 THEN 1 ELSE 0 END AS type_match,
+//   CASE 
+//     WHEN p.price BETWEEN $4 AND $5 THEN 1 ELSE 0 
+//   END AS budget_match,
+//   CASE 
+//     WHEN LOWER(p.address) LIKE '%' || $6 || '%' THEN 1 ELSE 0 
+//   END AS address_match
+
+// FROM properties p
+// WHERE 
+//   p.availability = 'Available'
+// ORDER BY p.property_id DESC`;
+
+//     const params = [
+//       preferred_location,
+//       preferred_location,
+//       property_type,
+//       budget_min,
+//       budget_max,
+//       preferred_location,
+
+//       preferred_location,
+//       preferred_location,
+//       preferred_location,
+//       budget_min,
+//       budget_max,
+//       property_type
+//     ];
+
+//     const properties = await db.query(propertySql, params);
+//     res.json(properties.rows);
+//   } catch (err) {
+//     console.error("❌ Property match failed:", err);
+//     res.status(500).json({ message: "Property match failed" });
+//   }
+// });
+// GET MATCHED PROPERTIES FOR CUSTOMER
 app.get("/api/customers/:id/matched-properties", async (req, res) => {
   const { id } = req.params;
 
   try {
+    // 1️⃣ Fetch customer preferences
     const customerResult = await db.query(
       `
-      SELECT 
-        budget_min,
-        budget_max,
+      SELECT
         LOWER(preferred_location) AS preferred_location,
         LOWER(property_type) AS property_type,
-        LOWER(requirement_details) AS requirement_details
+        LOWER(requirement_details) AS requirement,
+        CAST(regexp_replace(budget_min, '[^0-9.]', '', 'g') AS NUMERIC) AS budget_min,
+        CAST(regexp_replace(budget_max, '[^0-9.]', '', 'g') AS NUMERIC) AS budget_max
       FROM customers
-      WHERE customer_id=$1
+      WHERE customer_id = $1
       `,
       [id]
     );
@@ -2020,55 +2103,56 @@ app.get("/api/customers/:id/matched-properties", async (req, res) => {
     }
 
     const {
-      budget_min,
-      budget_max,
       preferred_location,
       property_type,
-      requirement_details
+      requirement,
+      budget_min,
+      budget_max
     } = customerResult.rows[0];
 
+    // 2️⃣ Match properties
     const propertySql = `
-     SELECT 
-  p.property_id,
-  p.property_name AS title,
-  p.property_type,
-  p.price,
-  p.area_value,
-  p.area_unit,
-  p.mandal,
-  p.district,
-  p.address,
-  p.availability,
+      SELECT
+        p.property_id,
+        p.property_name AS title,
+        p.property_type,
+        p.price,
+        p.area_value,
+        p.area_unit,
+        p.mandal,
+        p.district,
+        p.address,
+        p.description,
+        p.availability,
 
-  CASE WHEN LOWER(p.mandal) = $1 THEN 1 ELSE 0 END AS mandal_match,
-  CASE WHEN LOWER(p.district) = $2 THEN 1 ELSE 0 END AS district_match,
-  CASE WHEN LOWER(p.property_type) = $3 THEN 1 ELSE 0 END AS type_match,
-  CASE 
-    WHEN p.price BETWEEN $4 AND $5 THEN 1 ELSE 0 
-  END AS budget_match,
-  CASE 
-    WHEN LOWER(p.address) LIKE '%' || $6 || '%' THEN 1 ELSE 0 
-  END AS address_match
+        -- Match flags (1 = matched)
+        (LOWER(p.mandal) = $1)::int AS mandal_match,
+        (LOWER(p.district) = $1)::int AS district_match,
+        (LOWER(p.address) LIKE '%' || $1 || '%')::int AS address_match,
+        (LOWER(p.property_type) = $2)::int AS type_match,
+        (p.price BETWEEN $3 AND $4)::int AS budget_match,
+        (LOWER(p.description) LIKE '%' || $5 || '%')::int AS requirement_match
 
-FROM properties p
-WHERE 
-  p.availability = 'Available'
-ORDER BY p.property_id DESC`;
+      FROM properties p
+      WHERE
+        p.availability = 'Available'
+        AND (
+          LOWER(p.mandal) = $1
+          OR LOWER(p.district) = $1
+          OR LOWER(p.address) LIKE '%' || $1 || '%'
+          OR LOWER(p.property_type) = $2
+          OR p.price BETWEEN $3 AND $4
+          OR LOWER(p.description) LIKE '%' || $5 || '%'
+        )
+      ORDER BY p.property_id DESC
+    `;
 
     const params = [
-      preferred_location,
-      preferred_location,
-      property_type,
-      budget_min,
-      budget_max,
-      preferred_location,
-
-      preferred_location,
-      preferred_location,
-      preferred_location,
-      budget_min,
-      budget_max,
-      property_type
+      preferred_location, // $1
+      property_type,      // $2
+      budget_min,         // $3
+      budget_max,         // $4
+      requirement || ''   // $5 (safe even if null)
     ];
 
     const properties = await db.query(propertySql, params);
@@ -2080,47 +2164,90 @@ ORDER BY p.property_id DESC`;
 });
 
 
-
-
-
 // ⭐ GET ALL CUSTOMERS WITH MATCH COUNT
 // ⭐ GET CUSTOMERS WITH MATCHED PROPERTIES COUNT
 // ⭐ GET CUSTOMERS WITH MATCHED PROPERTIES COUNT + MATCH FLAG
+// app.get("/api/customers-with-matches", async (req, res) => {
+//  const sql = `
+//  SELECT 
+//   c.customer_id,
+//   c.name,
+//   c.email,
+//   c.phone,
+//   c.budget_min,
+//   c.budget_max,
+//   c.preferred_location,
+//   c.property_type,
+//   c.requirement_details,
+//   c.lead_status,
+//   c.created_at,
+
+//   (
+//     SELECT COUNT(*)
+//     FROM properties p
+//     WHERE 
+//       p.availability = 'Available'
+//       AND (
+//         LOWER(p.mandal) = LOWER(c.preferred_location)
+//         OR LOWER(p.district) = LOWER(c.preferred_location)
+//         OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
+//         OR p.price BETWEEN
+//           CAST(regexp_replace(c.budget_min, '[^0-9.]', '', 'g') AS NUMERIC)
+//           AND
+//           CAST(regexp_replace(c.budget_max, '[^0-9.]', '', 'g') AS NUMERIC)
+//         OR LOWER(p.property_type) = LOWER(c.property_type)
+//       )
+//   ) AS matched_properties_count
+
+// FROM customers c
+// ORDER BY c.customer_id DESC`;
+
+
+//   try {
+//     const result = await db.query(sql);
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error("❌ Fetch failed:", err);
+//     res.status(500).json({ message: "Database fetch error" });
+//   }
+// });
+// GET CUSTOMERS WITH MATCHED PROPERTIES COUNT
 app.get("/api/customers-with-matches", async (req, res) => {
- const sql = `
- SELECT 
-  c.customer_id,
-  c.name,
-  c.email,
-  c.phone,
-  c.budget_min,
-  c.budget_max,
-  c.preferred_location,
-  c.property_type,
-  c.requirement_details,
-  c.lead_status,
-  c.created_at,
+  const sql = `
+    SELECT
+      c.customer_id,
+      c.name,
+      c.email,
+      c.phone,
+      c.budget_min,
+      c.budget_max,
+      c.preferred_location,
+      c.property_type,
+      c.requirement_details,
+      c.lead_status,
+      c.created_at,
 
-  (
-    SELECT COUNT(*)
-    FROM properties p
-    WHERE 
-      p.availability = 'Available'
-      AND (
-        LOWER(p.mandal) = LOWER(c.preferred_location)
-        OR LOWER(p.district) = LOWER(c.preferred_location)
-        OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
-        OR p.price BETWEEN
-          CAST(regexp_replace(c.budget_min, '[^0-9.]', '', 'g') AS NUMERIC)
-          AND
-          CAST(regexp_replace(c.budget_max, '[^0-9.]', '', 'g') AS NUMERIC)
-        OR LOWER(p.property_type) = LOWER(c.property_type)
-      )
-  ) AS matched_properties_count
+      (
+        SELECT COUNT(*)
+        FROM properties p
+        WHERE
+          p.availability = 'Available'
+          AND (
+            LOWER(p.mandal) = LOWER(c.preferred_location)
+            OR LOWER(p.district) = LOWER(c.preferred_location)
+            OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
+            OR LOWER(p.property_type) = LOWER(c.property_type)
+            OR LOWER(p.description) LIKE '%' || LOWER(c.requirement_details) || '%'
+            OR p.price BETWEEN
+              CAST(regexp_replace(c.budget_min, '[^0-9.]', '', 'g') AS NUMERIC)
+              AND
+              CAST(regexp_replace(c.budget_max, '[^0-9.]', '', 'g') AS NUMERIC)
+          )
+      ) AS matched_properties_count
 
-FROM customers c
-ORDER BY c.customer_id DESC`;
-
+    FROM customers c
+    ORDER BY c.customer_id DESC
+  `;
 
   try {
     const result = await db.query(sql);
@@ -2130,6 +2257,7 @@ ORDER BY c.customer_id DESC`;
     res.status(500).json({ message: "Database fetch error" });
   }
 });
+
 
 
 //DASHBOARD COUNTS (customers, properties, income, expenses, profit)
