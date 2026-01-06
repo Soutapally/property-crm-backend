@@ -2051,7 +2051,7 @@ app.get("/api/customers/:id/matched-properties", async (req, res) => {
 
       FROM properties p
       WHERE 
-        LOWER(p.availability) = 'available'
+        LOWER(p.availability::text)  = 'available'
         AND (
           LOWER(p.mandal) = $7
           OR LOWER(p.district) = $8
@@ -2094,37 +2094,38 @@ app.get("/api/customers/:id/matched-properties", async (req, res) => {
 // ⭐ GET CUSTOMERS WITH MATCHED PROPERTIES COUNT
 // ⭐ GET CUSTOMERS WITH MATCHED PROPERTIES COUNT + MATCH FLAG
 app.get("/api/customers-with-matches", async (req, res) => {
-  const sql = `
-    SELECT 
-      c.customer_id,
-      c.name,
-      c.email,
-      c.phone,
-      c.budget_min,
-      c.budget_max,
-      c.preferred_location,
-      c.property_type,
-      c.requirement_details,
-      c.lead_status,
-      c.created_at,
+ const sql = `
+  SELECT 
+    c.customer_id,
+    c.name,
+    c.email,
+    c.phone,
+    c.budget_min,
+    c.budget_max,
+    c.preferred_location,
+    c.property_type,
+    c.requirement_details,
+    c.lead_status,
+    c.created_at,
 
-      (
-        SELECT COUNT(*)
-        FROM properties p
-        WHERE 
-          LOWER(p.availability) = 'available'
-          AND (
-            LOWER(p.mandal) = LOWER(c.preferred_location)
-            OR LOWER(p.district) = LOWER(c.preferred_location)
-            OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
-            OR p.price BETWEEN c.budget_min AND c.budget_max
-            OR LOWER(p.property_type) = LOWER(c.property_type)
-          )
-      ) AS matched_properties_count
+    (
+      SELECT COUNT(*)
+      FROM properties p
+      WHERE 
+        LOWER(p.availability::text) = 'available'
+        AND (
+          LOWER(p.mandal) = LOWER(c.preferred_location)
+          OR LOWER(p.district) = LOWER(c.preferred_location)
+          OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
+          OR p.price BETWEEN c.budget_min AND c.budget_max
+          OR LOWER(p.property_type) = LOWER(c.property_type)
+        )
+    ) AS matched_properties_count
 
-    FROM customers c
-    ORDER BY c.customer_id DESC
-  `;
+  FROM customers c
+  ORDER BY c.customer_id DESC
+`;
+
 
   try {
     const result = await db.query(sql);
