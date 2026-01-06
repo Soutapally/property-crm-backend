@@ -164,30 +164,78 @@ app.get("/api/admin/users", async (req, res) => {
 
 // API to SAVE Customer
 // API to SAVE Customer
+// app.post("/api/add-customer", async (req, res) => {
+//   const { 
+//     name, 
+//     phone, 
+//     phone_alt,
+//     email, 
+//     budget_from, 
+//     budget_to, 
+//     location, 
+//     property_type, 
+//     requirement, 
+//     status 
+//   } = req.body;
+
+//   if (!name || !phone) {
+//     return res.status(400).json({ message: "Name & Phone number required" });
+//   }
+
+//   // ✅ SAME LOGIC — NULL instead of empty string
+//   const emailValue = email && email.trim() !== "" ? email : null;
+
+//   const sql = `
+//     INSERT INTO customers 
+//     (
+//       name, phone, phone_alt, email,
+//       budget_min, budget_max,
+//       preferred_location, property_type,
+//       requirement_details, lead_status
+//     )
+//     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+//   `;
+
+//   try {
+//     await db.query(sql, [
+//       name,
+//       phone,
+//       phone_alt,
+//       emailValue,
+//       budget_from,
+//       budget_to,
+//       location,
+//       property_type,
+//       requirement,
+//       status
+//     ]);
+
+//     res.json({ message: "Customer stored successfully!" });
+//   } catch (err) {
+//     console.error("❌ Insert failed:", err);
+//     return res.status(500).json({ message: "Database insert error" });
+//   }
+// });
 app.post("/api/add-customer", async (req, res) => {
   const { 
-    name, 
-    phone, 
-    phone_alt,
-    email, 
-    budget_from, 
-    budget_to, 
-    location, 
-    property_type, 
-    requirement, 
-    status 
+    name, phone, phone_alt, email,
+    budget_from, budget_to,
+    location, property_type,
+    requirement, status
   } = req.body;
 
   if (!name || !phone) {
-    return res.status(400).json({ message: "Name & Phone number required" });
+    return res.status(400).json({ message: "Name & Phone required" });
   }
 
-  // ✅ SAME LOGIC — NULL instead of empty string
-  const emailValue = email && email.trim() !== "" ? email : null;
+  const emailValue =
+    email && email.trim() !== "" ? email.trim() : null;
+
+  const phoneAltValue =
+    phone_alt && phone_alt.trim() !== "" ? phone_alt.trim() : null;
 
   const sql = `
-    INSERT INTO customers 
-    (
+    INSERT INTO customers (
       name, phone, phone_alt, email,
       budget_min, budget_max,
       preferred_location, property_type,
@@ -200,7 +248,7 @@ app.post("/api/add-customer", async (req, res) => {
     await db.query(sql, [
       name,
       phone,
-      phone_alt,
+      phoneAltValue,
       emailValue,
       budget_from,
       budget_to,
@@ -210,10 +258,10 @@ app.post("/api/add-customer", async (req, res) => {
       status
     ]);
 
-    res.json({ message: "Customer stored successfully!" });
+    res.json({ message: "Customer added successfully" });
   } catch (err) {
-    console.error("❌ Insert failed:", err);
-    return res.status(500).json({ message: "Database insert error" });
+    console.error(err);
+    res.status(500).json({ message: "Insert failed" });
   }
 });
 
@@ -221,13 +269,40 @@ app.post("/api/add-customer", async (req, res) => {
 
 // ⭐ GET all customers
 // ⭐ GET all customers
+// app.get("/api/customers", async (req, res) => {
+//   const sql = `
+//     SELECT 
+//       customer_id, name, email, phone, phone_alt,   
+//       budget_min, budget_max,
+//       preferred_location, property_type,
+//       requirement_details, lead_status,
+//       created_at
+//     FROM customers
+//     ORDER BY customer_id DESC
+//   `;
+
+//   try {
+//     const result = await db.query(sql);
+//     res.status(200).json(result.rows);
+//   } catch (err) {
+//     console.error("❌ Fetch failed:", err);
+//     res.status(500).json({ message: "Database fetch error" });
+//   }
+// });
 app.get("/api/customers", async (req, res) => {
   const sql = `
     SELECT 
-      customer_id, name, email, phone, phone_alt,   
-      budget_min, budget_max,
-      preferred_location, property_type,
-      requirement_details, lead_status,
+      customer_id,
+      name,
+      COALESCE(email, '') AS email,
+      phone,
+      COALESCE(phone_alt, '') AS phone_alt,
+      COALESCE(preferred_location, '') AS preferred_location,
+      COALESCE(property_type, '') AS property_type,
+      COALESCE(requirement_details, '') AS requirement_details,
+      budget_min,
+      budget_max,
+      lead_status,
       created_at
     FROM customers
     ORDER BY customer_id DESC
@@ -235,15 +310,49 @@ app.get("/api/customers", async (req, res) => {
 
   try {
     const result = await db.query(sql);
-    res.status(200).json(result.rows);
+    res.json(result.rows);
   } catch (err) {
-    console.error("❌ Fetch failed:", err);
-    res.status(500).json({ message: "Database fetch error" });
+    console.error(err);
+    res.status(500).json({ message: "Fetch failed" });
   }
 });
 
 
 // ⭐ GET single customer by ID
+// app.get("/api/customer/:id", async (req, res) => {
+//   const { id } = req.params;
+
+//   const sql = `
+//     SELECT 
+//       customer_id,
+//       name,
+//       email,
+//       phone,
+//       phone_alt,
+//       budget_min,
+//       budget_max,
+//       preferred_location,
+//       property_type,
+//       requirement_details,
+//       lead_status,
+//       created_at
+//     FROM customers
+//     WHERE customer_id = $1
+//   `;
+
+//   try {
+//     const result = await db.query(sql, [id]);
+
+//     if (result.rows.length === 0) {
+//       return res.status(404).json({ message: "Customer not found" });
+//     }
+
+//     res.json(result.rows[0]);
+//   } catch (err) {
+//     console.error("❌ Fetch customer failed:", err);
+//     res.status(500).json({ message: "DB error" });
+//   }
+// });
 app.get("/api/customer/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -251,14 +360,14 @@ app.get("/api/customer/:id", async (req, res) => {
     SELECT 
       customer_id,
       name,
-      email,
+      COALESCE(email, '') AS email,
       phone,
-      phone_alt,
+      COALESCE(phone_alt, '') AS phone_alt,
+      COALESCE(preferred_location, '') AS preferred_location,
+      COALESCE(property_type, '') AS property_type,
+      COALESCE(requirement_details, '') AS requirement_details,
       budget_min,
       budget_max,
-      preferred_location,
-      property_type,
-      requirement_details,
       lead_status,
       created_at
     FROM customers
@@ -268,16 +377,17 @@ app.get("/api/customer/:id", async (req, res) => {
   try {
     const result = await db.query(sql, [id]);
 
-    if (result.rows.length === 0) {
+    if (!result.rows.length) {
       return res.status(404).json({ message: "Customer not found" });
     }
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("❌ Fetch customer failed:", err);
-    res.status(500).json({ message: "DB error" });
+    console.error(err);
+    res.status(500).json({ message: "Fetch failed" });
   }
 });
+
 
 
 //Get one customer id to edit customer 
@@ -305,9 +415,76 @@ app.get("/api/admin/users/:id", async (req, res) => {
   }
 });
 
+// ✅ UPDATE CUSTOMER (NULL-safe)
+app.put("/api/update-customer/:id", async (req, res) => {
+  const { id } = req.params;
 
-//update api to update the customers info
-// Update the customer info
+  const {
+    name,
+    phone,
+    phone_alt,
+    email,
+    budget_from,
+    budget_to,
+    location,
+    property_type,
+    requirement,
+    status
+  } = req.body;
+
+  if (!name || !phone) {
+    return res.status(400).json({ message: "Name & Phone required" });
+  }
+
+  // ✅ NULL safety
+  const emailValue =
+    email && email.trim() !== "" ? email.trim() : null;
+
+  const phoneAltValue =
+    phone_alt && phone_alt.trim() !== "" ? phone_alt.trim() : null;
+
+  const sql = `
+    UPDATE customers SET
+      name = $1,
+      phone = $2,
+      phone_alt = $3,
+      email = $4,
+      budget_min = $5,
+      budget_max = $6,
+      preferred_location = $7,
+      property_type = $8,
+      requirement_details = $9,
+      lead_status = $10
+    WHERE customer_id = $11
+  `;
+
+  try {
+    const result = await db.query(sql, [
+      name,
+      phone,
+      phoneAltValue,
+      emailValue,
+      budget_from,
+      budget_to,
+      location,
+      property_type,
+      requirement,
+      status,
+      id
+    ]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    res.json({ message: "Customer updated successfully" });
+  } catch (err) {
+    console.error("❌ Update failed:", err);
+    res.status(500).json({ message: "Update failed" });
+  }
+});
+
+
 // UPDATE user
 app.put("/api/admin/users/:id", async (req, res) => {
   const { id } = req.params;
