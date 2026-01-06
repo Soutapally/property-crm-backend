@@ -2028,39 +2028,32 @@ app.get("/api/customers/:id/matched-properties", async (req, res) => {
     } = customerResult.rows[0];
 
     const propertySql = `
-      SELECT 
-        p.property_id,
-        p.property_name AS title,
-        p.property_type,
-        p.price,
-        p.area_value,
-        p.area_unit,
-        p.mandal,
-        p.district,
-        p.address,
-        p.availability,
+     SELECT 
+  p.property_id,
+  p.property_name AS title,
+  p.property_type,
+  p.price,
+  p.area_value,
+  p.area_unit,
+  p.mandal,
+  p.district,
+  p.address,
+  p.availability,
 
-        CASE WHEN LOWER(p.mandal) = $1 THEN 1 ELSE 0 END AS mandal_match,
-        CASE WHEN LOWER(p.district) = $2 THEN 1 ELSE 0 END AS district_match,
-        CASE WHEN LOWER(p.property_type) = $3 THEN 1 ELSE 0 END AS type_match,
-        CASE WHEN p.price BETWEEN $4 AND $5 THEN 1 ELSE 0 END AS budget_match,
-        CASE 
-          WHEN LOWER(p.address) LIKE '%' || $6 || '%'
-          THEN 1 ELSE 0 
-        END AS address_match
+  CASE WHEN LOWER(p.mandal) = $1 THEN 1 ELSE 0 END AS mandal_match,
+  CASE WHEN LOWER(p.district) = $2 THEN 1 ELSE 0 END AS district_match,
+  CASE WHEN LOWER(p.property_type) = $3 THEN 1 ELSE 0 END AS type_match,
+  CASE 
+    WHEN p.price BETWEEN $4 AND $5 THEN 1 ELSE 0 
+  END AS budget_match,
+  CASE 
+    WHEN LOWER(p.address) LIKE '%' || $6 || '%' THEN 1 ELSE 0 
+  END AS address_match
 
-      FROM properties p
-      WHERE 
-        LOWER(p.availability::text)  = 'available'
-        AND (
-          LOWER(p.mandal) = $7
-          OR LOWER(p.district) = $8
-          OR LOWER(p.address) LIKE '%' || $9 || '%'
-          OR p.price BETWEEN $10 AND $11
-          OR LOWER(p.property_type) = $12
-        )
-      ORDER BY p.property_id DESC
-    `;
+FROM properties p
+WHERE 
+  p.availability = 'Available'
+ORDER BY p.property_id DESC`;
 
     const params = [
       preferred_location,
@@ -2095,36 +2088,38 @@ app.get("/api/customers/:id/matched-properties", async (req, res) => {
 // ⭐ GET CUSTOMERS WITH MATCHED PROPERTIES COUNT + MATCH FLAG
 app.get("/api/customers-with-matches", async (req, res) => {
  const sql = `
-  SELECT 
-    c.customer_id,
-    c.name,
-    c.email,
-    c.phone,
-    c.budget_min,
-    c.budget_max,
-    c.preferred_location,
-    c.property_type,
-    c.requirement_details,
-    c.lead_status,
-    c.created_at,
+ SELECT 
+  c.customer_id,
+  c.name,
+  c.email,
+  c.phone,
+  c.budget_min,
+  c.budget_max,
+  c.preferred_location,
+  c.property_type,
+  c.requirement_details,
+  c.lead_status,
+  c.created_at,
 
-    (
-      SELECT COUNT(*)
-      FROM properties p
-      WHERE 
-        LOWER(p.availability::text) = 'available'
-        AND (
-          LOWER(p.mandal) = LOWER(c.preferred_location)
-          OR LOWER(p.district) = LOWER(c.preferred_location)
-          OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
-          OR p.price BETWEEN c.budget_min AND c.budget_max
-          OR LOWER(p.property_type) = LOWER(c.property_type)
-        )
-    ) AS matched_properties_count
+  (
+    SELECT COUNT(*)
+    FROM properties p
+    WHERE 
+      p.availability = 'Available'
+      AND (
+        LOWER(p.mandal) = LOWER(c.preferred_location)
+        OR LOWER(p.district) = LOWER(c.preferred_location)
+        OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
+        OR p.price BETWEEN
+          CAST(regexp_replace(c.budget_min, '[^0-9.]', '', 'g') AS NUMERIC)
+          AND
+          CAST(regexp_replace(c.budget_max, '[^0-9.]', '', 'g') AS NUMERIC)
+        OR LOWER(p.property_type) = LOWER(c.property_type)
+      )
+  ) AS matched_properties_count
 
-  FROM customers c
-  ORDER BY c.customer_id DESC
-`;
+FROM customers c
+ORDER BY c.customer_id DESC`;
 
 
   try {
