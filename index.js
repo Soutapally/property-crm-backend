@@ -538,6 +538,12 @@ app.delete("/api/admin/users/:id", async (req, res) => {
   }
 });
 
+const normalize = (value) => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  return value;
+};
+
 
 // API TO ADD SELLER / CLIENT
 // API TO ADD SELLER / CLIENT
@@ -560,18 +566,19 @@ app.post("/api/add-seller", async (req, res) => {
   `;
 
   try {
-    await db.query(sql, [
-      name,
-      phone,
-      emailValue,
-      address,
-      city,
-      district,
-      seller_type,
-      property_name,
-      property_type,
-      notes
-    ]);
+   await db.query(sql, [
+  name,
+  phone,
+  normalize(email),
+  normalize(address),
+  normalize(city),
+  normalize(district),
+  normalize(seller_type),
+  normalize(property_name),
+  normalize(property_type),
+  normalize(notes)
+]);
+
 
     res.json({ message: "Seller saved successfully!" });
   } catch (err) {
@@ -693,19 +700,20 @@ app.put("/api/update-seller/:id", async (req, res) => {
   `;
 
   try {
-    const result = await db.query(sql, [
-      name,
-      phone,
-      emailValue,
-      address,
-      city,
-      district,
-      seller_type,
-      property_name,
-      property_type,
-      notes,
-      sellerId
-    ]);
+    const result =await db.query(sql, [
+  name,
+  phone,
+  normalize(email),
+  normalize(address),
+  normalize(city),
+  normalize(district),
+  normalize(seller_type),
+  normalize(property_name),
+  normalize(property_type),
+  normalize(notes),
+  sellerId
+]);
+
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Seller not found" });
