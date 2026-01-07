@@ -582,12 +582,30 @@ app.post("/api/add-seller", async (req, res) => {
 
 
 // 📌 Fetch all sellers
+// app.get("/api/sellers", async (req, res) => {
+//   const sql = "SELECT * FROM sellers ORDER BY seller_id DESC";
+
+//   try {
+//     const result = await db.query(sql);
+//     res.status(200).json(result.rows);
+//   } catch (err) {
+//     console.error("❌ Error fetching sellers:", err);
+//     res.status(500).json({ message: "Database fetch error" });
+//   }
+// });
+// 📌 Fetch all sellers
 app.get("/api/sellers", async (req, res) => {
   const sql = "SELECT * FROM sellers ORDER BY seller_id DESC";
 
   try {
     const result = await db.query(sql);
-    res.status(200).json(result.rows);
+
+    const cleanedRows = result.rows.map(row => ({
+      ...row,
+      email: row.email === "NULL" ? null : row.email
+    }));
+
+    res.status(200).json(cleanedRows);
   } catch (err) {
     console.error("❌ Error fetching sellers:", err);
     res.status(500).json({ message: "Database fetch error" });
@@ -595,6 +613,25 @@ app.get("/api/sellers", async (req, res) => {
 });
 
 
+// 📌 Fetch single seller by ID
+// app.get("/api/seller/:id", async (req, res) => {
+//   const sellerId = req.params.id;
+
+//   const sql = "SELECT * FROM sellers WHERE seller_id = $1";
+
+//   try {
+//     const result = await db.query(sql, [sellerId]);
+
+//     if (result.rows.length === 0) {
+//       return res.status(404).json({ message: "Seller not found" });
+//     }
+
+//     res.status(200).json(result.rows[0]);
+//   } catch (err) {
+//     console.error("❌ Error fetching seller:", err);
+//     res.status(500).json({ message: "Database fetch error" });
+//   }
+// });
 // 📌 Fetch single seller by ID
 app.get("/api/seller/:id", async (req, res) => {
   const sellerId = req.params.id;
@@ -608,7 +645,12 @@ app.get("/api/seller/:id", async (req, res) => {
       return res.status(404).json({ message: "Seller not found" });
     }
 
-    res.status(200).json(result.rows[0]);
+    const seller = {
+      ...result.rows[0],
+      email: result.rows[0].email === "NULL" ? null : result.rows[0].email
+    };
+
+    res.status(200).json(seller);
   } catch (err) {
     console.error("❌ Error fetching seller:", err);
     res.status(500).json({ message: "Database fetch error" });
