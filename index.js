@@ -785,16 +785,16 @@ app.post("/api/add-property", async (req, res) => {
     await db.query(sql, [
       seller_id,
       property_name,
-      property_type,
-      price,
-      area_value,
-      area_unit,
-      facing_direction,
-      mandal,
-      address,
-      district,
-      availability,
-      description
+      normalize(property_type),
+      normalize(price),
+      normalize(area_value),
+      normalize(area_unit),
+      normalize(facing_direction),
+      normalize(mandal),
+      normalize(address),
+      normalize(district),
+      normalize(availability), // ⭐ FIXES ENUM ERROR
+      normalize(description)
     ]);
 
     res.status(200).json({ message: "Property saved successfully!" });
@@ -803,7 +803,6 @@ app.post("/api/add-property", async (req, res) => {
     res.status(500).json({ message: "Database insert error" });
   }
 });
-
 
 
 // GET ALL PROPERTIES (with seller name)
@@ -892,25 +891,21 @@ app.put("/api/update-property/:id", async (req, res) => {
   `;
 
   try {
-    const result = await db.query(sql, [
+    await db.query(sql, [
       seller_id,
       property_name,
-      property_type,
-      price,
-      area_value,
-      area_unit,
-      facing_direction,
-      mandal,
-      address,
-      district,
-      availability,
-      description,
+      normalize(property_type),
+      normalize(price),
+      normalize(area_value),
+      normalize(area_unit),
+      normalize(facing_direction),
+      normalize(mandal),
+      normalize(address),
+      normalize(district),
+      normalize(availability), // ⭐ FIX
+      normalize(description),
       propertyId
     ]);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Property not found" });
-    }
 
     res.status(200).json({ message: "Property updated successfully!" });
   } catch (err) {
@@ -918,6 +913,7 @@ app.put("/api/update-property/:id", async (req, res) => {
     res.status(500).json({ message: "Database update error" });
   }
 });
+
 
 
 // 🗑️ DELETE PROPERTY
