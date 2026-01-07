@@ -432,7 +432,7 @@ app.put("/api/update-customer/:id", async (req, res) => {
     status
   } = req.body;
 
-  if (!name || !phone) {
+  if (!name) {
     return res.status(400).json({ message: "Name & Phone required" });
   }
 
