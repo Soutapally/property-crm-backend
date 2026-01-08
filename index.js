@@ -1150,9 +1150,18 @@ app.post("/api/property-type", async (req, res) => {
     await db.query(sql, [type_name]);
     res.status(200).json({ message: "Property Type added successfully!" });
   } catch (err) {
-    console.error("❌ Insert error:", err);
-    res.status(500).json({ message: "Database insert error" });
+  console.error("❌ Insert error:", err);
+
+  // Duplicate key (unique constraint)
+  if (err.code === "23505") {
+    return res
+      .status(409)
+      .json({ message: "Property type already exists" });
   }
+
+  res.status(500).json({ message: "Database insert error" });
+}
+
 });
 
 
@@ -2085,13 +2094,13 @@ app.post("/api/add-finance", async (req, res) => {
     amount,
     record_date,
     notes,
-    employee_name,
+    employee_id,
     employee_amount
   } = req.body;
 
   const sql = `
     INSERT INTO finances
-    (type, category, property_name, amount, record_date, notes, employee_name, employee_amount)
+    (type, category, property_name, amount, record_date, notes, employee_id, employee_amount)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
   `;
 
@@ -2103,15 +2112,17 @@ app.post("/api/add-finance", async (req, res) => {
       amount,
       record_date,
       notes,
-      employee_name || null,
-      employee_amount || null
+      employee_id,
+      employee_amount
     ]);
 
     res.json({ message: "Finance record added successfully" });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "DB Error" });
   }
 });
+
 
 
 //Get all finance records
@@ -2154,7 +2165,7 @@ app.put("/api/finance/:id", async (req, res) => {
     amount,
     record_date,
     notes,
-    employee_name,
+    employee_id,
     employee_amount
   } = req.body;
 
@@ -2166,7 +2177,7 @@ app.put("/api/finance/:id", async (req, res) => {
       amount=$4,
       record_date=$5,
       notes=$6,
-      employee_name=$7,
+      employee_id=$7,
       employee_amount=$8
     WHERE finance_id=$9
   `;
@@ -2179,16 +2190,18 @@ app.put("/api/finance/:id", async (req, res) => {
       amount,
       record_date,
       notes,
-      employee_name || null,
-      employee_amount || null,
+      employee_id,
+      employee_amount,
       req.params.id
     ]);
 
-    res.json({ message: "Finance updated" });
+    res.json({ message: "Finance updated successfully" });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "DB Error" });
   }
 });
+
 
 
 // delete finance record
