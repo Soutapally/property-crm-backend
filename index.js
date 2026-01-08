@@ -2094,34 +2094,36 @@ app.post("/api/add-finance", async (req, res) => {
     amount,
     record_date,
     notes,
-    employee_id,
+    employee_name,
     employee_amount
   } = req.body;
 
-  const sql = `
-    INSERT INTO finances
-    (type, category, property_name, amount, record_date, notes, employee_id, employee_amount)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-  `;
-
   try {
-    await db.query(sql, [
-      type,
-      category,
-      property_name ?? null,
-      amount,
-      record_date,
-      notes ?? null,
-      employee_id ?? null,
-      employee_amount ?? null
-    ]);
+    await db.query(
+      `
+      INSERT INTO finances
+      (type, category, property_name, amount, record_date, notes, employee_name, employee_amount)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `,
+      [
+        type,
+        category,
+        property_name ?? null,
+        amount,
+        record_date,
+        notes ?? null,
+        employee_name ?? null,
+        employee_amount ?? null
+      ]
+    );
 
-    res.json({ message: "Finance record added successfully" });
+    res.json({ message: "Finance added successfully" });
   } catch (err) {
     console.error("ADD FINANCE ERROR:", err);
     res.status(500).json({ message: "Finance insert failed" });
   }
 });
+
 
 
 //Get all finance records
@@ -2164,35 +2166,36 @@ app.put("/api/finance/:id", async (req, res) => {
     amount,
     record_date,
     notes,
-    employee_id,
+    employee_name,
     employee_amount
   } = req.body;
 
-  const sql = `
-    UPDATE finances SET
-      type=$1,
-      category=$2,
-      property_name=$3,
-      amount=$4,
-      record_date=$5,
-      notes=$6,
-      employee_id=$7,
-      employee_amount=$8
-    WHERE finance_id=$9
-  `;
-
   try {
-    await db.query(sql, [
-      type,
-      category,
-      property_name ?? null,
-      amount,
-      record_date,
-      notes ?? null,
-      employee_id ?? null,
-      employee_amount ?? null,
-      req.params.id
-    ]);
+    await db.query(
+      `
+      UPDATE finances SET
+        type=$1,
+        category=$2,
+        property_name=$3,
+        amount=$4,
+        record_date=$5,
+        notes=$6,
+        employee_name=$7,
+        employee_amount=$8
+      WHERE finance_id=$9
+      `,
+      [
+        type,
+        category,
+        property_name ?? null,
+        amount,
+        record_date,
+        notes ?? null,
+        employee_name ?? null,
+        employee_amount ?? null,
+        req.params.id
+      ]
+    );
 
     res.json({ message: "Finance updated successfully" });
   } catch (err) {
@@ -2200,6 +2203,7 @@ app.put("/api/finance/:id", async (req, res) => {
     res.status(500).json({ message: "Finance update failed" });
   }
 });
+
 
 
 // delete finance record
