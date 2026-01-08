@@ -2108,21 +2108,20 @@ app.post("/api/add-finance", async (req, res) => {
     await db.query(sql, [
       type,
       category,
-      property_name,
+      property_name ?? null,
       amount,
       record_date,
-      notes,
-      employee_id,
-      employee_amount
+      notes ?? null,
+      employee_id ?? null,
+      employee_amount ?? null
     ]);
 
     res.json({ message: "Finance record added successfully" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "DB Error" });
+    console.error("ADD FINANCE ERROR:", err);
+    res.status(500).json({ message: "Finance insert failed" });
   }
 });
-
 
 
 //Get all finance records
@@ -2186,22 +2185,21 @@ app.put("/api/finance/:id", async (req, res) => {
     await db.query(sql, [
       type,
       category,
-      property_name,
+      property_name ?? null,
       amount,
       record_date,
-      notes,
-      employee_id,
-      employee_amount,
+      notes ?? null,
+      employee_id ?? null,
+      employee_amount ?? null,
       req.params.id
     ]);
 
     res.json({ message: "Finance updated successfully" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "DB Error" });
+    console.error("UPDATE FINANCE ERROR:", err);
+    res.status(500).json({ message: "Finance update failed" });
   }
 });
-
 
 
 // delete finance record
