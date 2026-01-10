@@ -2048,41 +2048,44 @@ app.put("/api/update-sale/:id", async (req, res) => {
     payment_status,
     notes
   } = req.body;
+const safeCommission =
+  commission_amount === "" ? null : commission_amount;
 
   try {
-    await db.query(
-      `UPDATE sales SET
-        buyer_name=$1,
-        buyer_phone=$2,
-        seller_name=$3,
-        seller_phone=$4,
-        property_id=$5,
-        property_name=$6,
-        sale_price=$7,
-        commission_amount=$8,
-        sale_date=$9,
-        registration_date=$10,
-        loan_status=$11,
-        payment_status=$12,
-        notes=$13
-       WHERE sale_id=$14`,
-      [
-        buyer_name,
-        buyer_phone,
-        seller_name,
-        seller_phone,
-        property_id,
-        property_name,
-        sale_price,
-        commission_amount,
-        sale_date,
-        registration_date,
-        loan_status,
-        payment_status,
-        notes,
-        saleId
-      ]
-    );
+   await db.query(
+  `UPDATE sales SET
+    buyer_name=$1,
+    buyer_phone=$2,
+    seller_name=$3,
+    seller_phone=$4,
+    property_id=$5,
+    property_name=$6,
+    sale_price=$7,
+    commission_amount=$8,
+    sale_date=$9,
+    registration_date=$10,
+    loan_status=$11,
+    payment_status=$12,
+    notes=$13
+   WHERE sale_id=$14`,
+  [
+    buyer_name,
+    buyer_phone,
+    seller_name,
+    seller_phone,
+    property_id,
+    property_name,
+    sale_price,
+    safeCommission, // ✅ HERE
+    sale_date,
+    registration_date,
+    loan_status,
+    payment_status,
+    notes,
+    saleId
+  ]
+);
+
 
     res.json({ message: "Sale updated successfully!" });
   } catch (err) {
