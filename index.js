@@ -921,21 +921,22 @@ app.put("/api/update-property/:id", async (req, res) => {
   `;
 
   try {
-    await db.query(sql, [
-      seller_id,
-      property_name,
-      normalize(property_type),
-      normalize(price),
-      normalize(area_value),
-      normalize(area_unit),
-      normalize(facing_direction),
-      normalize(mandal),
-      normalize(address),
-      normalize(district),
-      normalize(availability), // ⭐ FIX
-      normalize(description),
-      propertyId
-    ]);
+   await db.query(sql, [
+  seller_id,
+  property_name,
+  normalize(property_type),
+  price ? Number(price) : null,   // ⭐ FIXED
+  normalize(area_value),
+  normalize(area_unit),
+  normalize(facing_direction),
+  normalize(mandal),
+  normalize(address),
+  normalize(district),
+  normalize(availability),
+  normalize(description),
+  propertyId
+]);
+
 
     res.status(200).json({ message: "Property updated successfully!" });
   } catch (err) {
