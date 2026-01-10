@@ -607,10 +607,25 @@ app.get("/api/sellers", async (req, res) => {
   try {
     const result = await db.query(sql);
 
-    const cleanedRows = result.rows.map(row => ({
-      ...row,
-      email: row.email === "NULL" ? null : row.email
-    }));
+    // const cleanedRows = result.rows.map(row => ({
+    //   ...row,
+    //   email: row.email === "NULL" ? null : row.email
+    // }));
+    const normalizeNull = (v) =>
+  v === "NULL" || v === "" ? null : v;
+
+const cleanedRows = result.rows.map(row => ({
+  ...row,
+  email: normalizeNull(row.email),
+  seller_type: normalizeNull(row.seller_type),
+  address: normalizeNull(row.address),
+  city: normalizeNull(row.city),
+  district: normalizeNull(row.district),
+  property_name: normalizeNull(row.property_name),
+  property_type: normalizeNull(row.property_type),
+  notes: normalizeNull(row.notes),
+}));
+
 
     res.status(200).json(cleanedRows);
   } catch (err) {
@@ -652,10 +667,25 @@ app.get("/api/seller/:id", async (req, res) => {
       return res.status(404).json({ message: "Seller not found" });
     }
 
-    const seller = {
-      ...result.rows[0],
-      email: result.rows[0].email === "NULL" ? null : result.rows[0].email
-    };
+    // const seller = {
+    //   ...result.rows[0],
+    //   email: result.rows[0].email === "NULL" ? null : result.rows[0].email
+    // };
+const r = result.rows[0];
+const normalizeNull = (v) =>
+  v === "NULL" || v === "" ? null : v;
+
+const seller = {
+  ...r,
+  email: normalizeNull(r.email),
+  seller_type: normalizeNull(r.seller_type),
+  address: normalizeNull(r.address),
+  city: normalizeNull(r.city),
+  district: normalizeNull(r.district),
+  property_name: normalizeNull(r.property_name),
+  property_type: normalizeNull(r.property_type),
+  notes: normalizeNull(r.notes),
+};
 
     res.status(200).json(seller);
   } catch (err) {
@@ -2086,6 +2116,44 @@ app.delete("/api/sale/:id", async (req, res) => {
 
 //saving the finances to db
 //ADD FINANCE
+// app.post("/api/add-finance", async (req, res) => {
+//   const {
+//     type,
+//     category,
+//     property_name,
+//     amount,
+//     record_date,
+//     notes,
+//     employee_name,
+//     employee_amount
+//   } = req.body;
+
+//   try {
+//     await db.query(
+//       `
+//       INSERT INTO finances
+//       (type, category, property_name, amount, record_date, notes, employee_name, employee_amount)
+//       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+//       `,
+//       [
+//         type,
+//         category,
+//         property_name ?? null,
+//         amount,
+//         record_date,
+//         notes ?? null,
+//         employee_name ?? null,
+//         employee_amount ?? null
+//       ]
+//     );
+
+//     res.json({ message: "Finance added successfully" });
+//   } catch (err) {
+//     console.error("ADD FINANCE ERROR:", err);
+//     res.status(500).json({ message: "Finance insert failed" });
+//   }
+// });
+
 app.post("/api/add-finance", async (req, res) => {
   const {
     type,
@@ -2094,7 +2162,7 @@ app.post("/api/add-finance", async (req, res) => {
     amount,
     record_date,
     notes,
-    employee_name,
+    employee_id,
     employee_amount
   } = req.body;
 
@@ -2102,7 +2170,7 @@ app.post("/api/add-finance", async (req, res) => {
     await db.query(
       `
       INSERT INTO finances
-      (type, category, property_name, amount, record_date, notes, employee_name, employee_amount)
+      (type, category, property_name, amount, record_date, notes, employee_id, employee_amount)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       `,
       [
@@ -2112,29 +2180,46 @@ app.post("/api/add-finance", async (req, res) => {
         amount,
         record_date,
         notes ?? null,
-        employee_name ?? null,
+        employee_id ?? null,
         employee_amount ?? null
       ]
     );
 
-    res.json({ message: "Finance added successfully" });
+    res.json({ message: "Finance record added successfully" });
   } catch (err) {
-    console.error("ADD FINANCE ERROR:", err);
+    console.error(err);
     res.status(500).json({ message: "Finance insert failed" });
   }
 });
 
 
-
 //Get all finance records
-app.get("/api/finances", async (req, res) => {
-  const sql = `
-    SELECT * FROM finances
-    ORDER BY record_date DESC
-  `;
+// app.get("/api/finances", async (req, res) => {
+//   const sql = `
+//     SELECT * FROM finances
+//     ORDER BY record_date DESC
+//   `;
 
+//   try {
+//     const result = await db.query(sql);
+//     res.json(result.rows);
+//   } catch (err) {
+//     res.status(500).json({ message: "DB Error" });
+//   }
+// });
+app.get("/api/finances", async (req, res) => {
   try {
-    const result = await db.query(sql);
+    const result = await db.query(
+      `
+      SELECT
+        f.*,
+        u.name AS employee_name
+      FROM finances f
+      LEFT JOIN users u ON u.user_id = f.employee_id
+      ORDER BY f.record_date DESC
+      `
+    );
+
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ message: "DB Error" });
@@ -2143,10 +2228,29 @@ app.get("/api/finances", async (req, res) => {
 
 
 //Get the one finance from db
+// app.get("/api/finance/:id", async (req, res) => {
+//   try {
+//     const result = await db.query(
+//       "SELECT * FROM finances WHERE finance_id=$1",
+//       [req.params.id]
+//     );
+
+//     res.json(result.rows[0]);
+//   } catch (err) {
+//     res.status(500).json({ message: "DB Error" });
+//   }
+// });
 app.get("/api/finance/:id", async (req, res) => {
   try {
     const result = await db.query(
-      "SELECT * FROM finances WHERE finance_id=$1",
+      `
+      SELECT
+        f.*,
+        u.name AS employee_name
+      FROM finances f
+      LEFT JOIN users u ON u.user_id = f.employee_id
+      WHERE f.finance_id = $1
+      `,
       [req.params.id]
     );
 
@@ -2158,6 +2262,51 @@ app.get("/api/finance/:id", async (req, res) => {
 
 
 //update the finance in the db
+// app.put("/api/finance/:id", async (req, res) => {
+//   const {
+//     type,
+//     category,
+//     property_name,
+//     amount,
+//     record_date,
+//     notes,
+//     employee_name,
+//     employee_amount
+//   } = req.body;
+
+//   try {
+//     await db.query(
+//       `
+//       UPDATE finances SET
+//         type=$1,
+//         category=$2,
+//         property_name=$3,
+//         amount=$4,
+//         record_date=$5,
+//         notes=$6,
+//         employee_name=$7,
+//         employee_amount=$8
+//       WHERE finance_id=$9
+//       `,
+//       [
+//         type,
+//         category,
+//         property_name ?? null,
+//         amount,
+//         record_date,
+//         notes ?? null,
+//         employee_name ?? null,
+//         employee_amount ?? null,
+//         req.params.id
+//       ]
+//     );
+
+//     res.json({ message: "Finance updated successfully" });
+//   } catch (err) {
+//     console.error("UPDATE FINANCE ERROR:", err);
+//     res.status(500).json({ message: "Finance update failed" });
+//   }
+// });
 app.put("/api/finance/:id", async (req, res) => {
   const {
     type,
@@ -2166,7 +2315,7 @@ app.put("/api/finance/:id", async (req, res) => {
     amount,
     record_date,
     notes,
-    employee_name,
+    employee_id,
     employee_amount
   } = req.body;
 
@@ -2180,7 +2329,7 @@ app.put("/api/finance/:id", async (req, res) => {
         amount=$4,
         record_date=$5,
         notes=$6,
-        employee_name=$7,
+        employee_id=$7,
         employee_amount=$8
       WHERE finance_id=$9
       `,
@@ -2191,7 +2340,7 @@ app.put("/api/finance/:id", async (req, res) => {
         amount,
         record_date,
         notes ?? null,
-        employee_name ?? null,
+        employee_id ?? null,
         employee_amount ?? null,
         req.params.id
       ]
@@ -2199,7 +2348,7 @@ app.put("/api/finance/:id", async (req, res) => {
 
     res.json({ message: "Finance updated successfully" });
   } catch (err) {
-    console.error("UPDATE FINANCE ERROR:", err);
+    console.error(err);
     res.status(500).json({ message: "Finance update failed" });
   }
 });
