@@ -1520,7 +1520,7 @@ app.get("/api/site-visits", async (req, res) => {
   const sql = `
     SELECT
       sv.site_visit_id,
-      sv.visit_datetime,
+      to_char(sv.visit_datetime, 'YYYY-MM-DD HH24:MI:SS') AS visit_datetime,
       c.name AS customer_name,
       p.property_name,
       svp.status,
@@ -1541,7 +1541,7 @@ app.get("/api/site-visits", async (req, res) => {
         grouped[r.site_visit_id] = {
           visit_id: r.site_visit_id,
           customer_name: r.customer_name,
-          visit_datetime: r.visit_datetime,
+          visit_datetime: r.visit_datetime, // ✅ STRING NOW
           properties: []
         };
       }
@@ -1559,6 +1559,7 @@ app.get("/api/site-visits", async (req, res) => {
     res.status(500).json({ message: "DB Error" });
   }
 });
+
 
 
 
@@ -2362,8 +2363,15 @@ app.put("/api/finance/:id", async (req, res) => {
 
     res.json({ message: "Finance updated successfully" });
   } catch (err) {
-    console.error("❌ Finance update error:", err);
-    res.status(500).json({ message: "Finance update failed" });
+    console.error("❌ Finance update error:");
+    console.error("Message:", err.message);
+    console.error("Detail:", err.detail);
+    console.error("Code:", err.code);
+
+    res.status(500).json({
+      message: "Finance update failed",
+      error: err.message
+    });
   }
 });
 
