@@ -2323,6 +2323,16 @@ app.put("/api/finance/:id", async (req, res) => {
     employee_amount
   } = req.body;
 
+  // ✅ SAFETY VALIDATION
+  if (
+    category === "Commission" &&
+    (typeof property_name !== "string" || property_name.trim() === "")
+  ) {
+    return res.status(400).json({
+      message: "Property name is required for Commission category"
+    });
+  }
+
   try {
     await db.query(
       `
@@ -2352,11 +2362,10 @@ app.put("/api/finance/:id", async (req, res) => {
 
     res.json({ message: "Finance updated successfully" });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Finance update error:", err);
     res.status(500).json({ message: "Finance update failed" });
   }
 });
-
 
 
 // delete finance record
