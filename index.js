@@ -2158,7 +2158,6 @@ app.delete("/api/sale/:id", async (req, res) => {
 //     res.status(500).json({ message: "Finance insert failed" });
 //   }
 // });
-
 app.post("/api/add-finance", async (req, res) => {
   const {
     type,
@@ -2325,14 +2324,21 @@ app.put("/api/finance/:id", async (req, res) => {
   } = req.body;
 
   // ✅ SAFETY VALIDATION
-  if (
-    category === "Commission" &&
-    (typeof property_name !== "string" || property_name.trim() === "")
-  ) {
-    return res.status(400).json({
-      message: "Property name is required for Commission category"
-    });
-  }
+ if (
+  category === "Commission" &&
+  (typeof property_name !== "string" || property_name.trim() === "")
+) {
+  return res.status(400).json({
+    message: "Property name is required for Commission category"
+  });
+}
+
+if (amount === null || amount === undefined || isNaN(amount)) {
+  return res.status(400).json({
+    message: "Amount is required"
+  });
+}
+
 
   try {
     await db.query(
