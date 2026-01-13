@@ -999,7 +999,20 @@ app.get("/api/customers-list", async (req, res) => {
 //saving the followups to db
 // ⭐ SAVE follow-up WITH property_id
 app.post("/api/add-followup", async (req, res) => {
-  const { customer_id, property_ids, next_followup_at, status, notes } = req.body;
+  const {
+    customer_id,
+    property_ids,
+    next_followup_at,
+    status,
+    notes
+  } = req.body;
+
+  // ✅ ADD HERE
+  if (!customer_id || !next_followup_at) {
+    return res.status(400).json({
+      message: "Please select customer and follow-up date"
+    });
+  }
 
   const followupSql = `
     INSERT INTO followups (customer_id, next_followup_at, status, notes)
@@ -1011,8 +1024,8 @@ app.post("/api/add-followup", async (req, res) => {
     const result = await db.query(followupSql, [
       customer_id,
       next_followup_at,
-      status,
-      notes
+      status || "New",
+      notes || null
     ]);
 
     const followupId = result.rows[0].followup_id;
@@ -1033,9 +1046,10 @@ app.post("/api/add-followup", async (req, res) => {
     res.json({ message: "Follow-up saved successfully!" });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Followup insert failed" });
+    res.status(500).json({ message: "Follow-up insert failed" });
   }
 });
+
 
 
 
@@ -1049,12 +1063,17 @@ app.get("/api/followups", async (req, res) => {
       f.status,
       f.notes,
       c.name AS customer_name,
-      STRING_AGG(p.property_name, ', ') AS properties
+      COALESCE(STRING_AGG(DISTINCT p.property_name, ', '), '') AS properties
     FROM followups f
     LEFT JOIN customers c ON c.customer_id = f.customer_id
     LEFT JOIN followup_properties fp ON fp.followup_id = f.followup_id
     LEFT JOIN properties p ON p.property_id = fp.property_id
-    GROUP BY f.followup_id, c.name
+    GROUP BY 
+      f.followup_id,
+      f.next_followup_at,
+      f.status,
+      f.notes,
+      c.name
     ORDER BY f.next_followup_at ASC
   `;
 
@@ -1063,9 +1082,10 @@ app.get("/api/followups", async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json(err);
+    res.status(500).json({ message: "Failed to load followups" });
   }
 });
+
 
 
 //GET api to get one followup 
@@ -1106,8 +1126,22 @@ app.get("/api/edit-followup/:id", async (req, res) => {
 //updating the followups
 // ⭐ UPDATE followup WITH property_id
 app.put("/api/update-followup/:id", async (req, res) => {
-  const { customer_id, property_ids, next_followup_at, status, notes } = req.body;
+  const {
+    customer_id,
+    property_ids,
+    next_followup_at,
+    status,
+    notes
+  } = req.body;
+
   const followupId = req.params.id;
+
+  // ✅ ADD HERE
+  if (!customer_id || !next_followup_at) {
+    return res.status(400).json({
+      message: "Please select customer and follow-up date"
+    });
+  }
 
   const updateSql = `
     UPDATE followups
@@ -1119,12 +1153,12 @@ app.put("/api/update-followup/:id", async (req, res) => {
     await db.query(updateSql, [
       customer_id,
       next_followup_at,
-      status,
-      notes,
+      status || "Pending",
+      notes || null,
       followupId
     ]);
 
-    // delete old mappings
+    // remove old properties
     await db.query(
       "DELETE FROM followup_properties WHERE followup_id=$1",
       [followupId]
@@ -1143,11 +1177,13 @@ app.put("/api/update-followup/:id", async (req, res) => {
       await db.query(insertSql, [followupId, ...property_ids]);
     }
 
-    res.json({ message: "Follow-up updated!" });
+    res.json({ message: "Follow-up updated successfully!" });
   } catch (err) {
-    res.status(500).json({ message: "Update failed" });
+    console.error(err);
+    res.status(500).json({ message: "Follow-up update failed" });
   }
 });
+
 
 
 
@@ -2312,7 +2348,7 @@ app.get("/api/finance/:id", async (req, res) => {
 //   }
 // });
 app.put("/api/finance/:id", async (req, res) => {
-  const {
+  let {
     type,
     category,
     property_name,
@@ -2323,60 +2359,102 @@ app.put("/api/finance/:id", async (req, res) => {
     employee_amount
   } = req.body;
 
-  // ✅ SAFETY VALIDATION
- if (
-  category === "Commission" &&
-  (typeof property_name !== "string" || property_name.trim() === "")
-) {
-  return res.status(400).json({
-    message: "Property name is required for Commission category"
-  });
-}
+  const isEmployeeCategory =
+    category === "Salary" || category === "Incentives";
 
-if (amount === null || amount === undefined || isNaN(amount)) {
-  return res.status(400).json({
-    message: "Amount is required"
-  });
-}
+  // ---------- USER-FRIENDLY VALIDATIONS ----------
 
+  if (!type) {
+    return res.status(400).json({
+      message: "Please select income or expense type"
+    });
+  }
+
+  if (!category) {
+    return res.status(400).json({
+      message: "Please select a category"
+    });
+  }
+
+  if (!record_date) {
+    return res.status(400).json({
+      message: "Please select a date"
+    });
+  }
+
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return res.status(400).json({
+      message: "Please enter a valid amount"
+    });
+  }
+
+  // Salary / Incentives validation
+  if (isEmployeeCategory) {
+    if (!employee_id) {
+      return res.status(400).json({
+        message: "Please select an employee"
+      });
+    }
+
+    if (!employee_amount || isNaN(employee_amount)) {
+      return res.status(400).json({
+        message: "Please enter employee amount"
+      });
+    }
+
+    // Salary/Incentives must NOT have property name
+    property_name = null;
+  }
+
+  // Commission validation
+  if (category === "Commission") {
+    if (!property_name || !property_name.trim()) {
+      return res.status(400).json({
+        message: "Please enter property name for commission"
+      });
+    }
+  }
+
+  // Non-employee categories cleanup
+  if (!isEmployeeCategory) {
+    employee_id = null;
+    employee_amount = null;
+  }
+
+  // ---------- UPDATE ----------
 
   try {
     await db.query(
       `
       UPDATE finances SET
-        type=$1,
-        category=$2,
-        property_name=$3,
-        amount=$4,
-        record_date=$5,
-        notes=$6,
-        employee_id=$7,
-        employee_amount=$8
-      WHERE finance_id=$9
+        type = $1,
+        category = $2,
+        property_name = $3,
+        amount = $4,
+        record_date = $5,
+        notes = $6,
+        employee_id = $7,
+        employee_amount = $8
+      WHERE finance_id = $9
       `,
       [
         type,
         category,
-        property_name ?? null,
+        property_name?.trim() || null,
         amount,
         record_date,
-        notes ?? null,
-        employee_id ?? null,
-        employee_amount ?? null,
+        notes?.trim() || null,
+        employee_id,
+        employee_amount,
         req.params.id
       ]
     );
 
     res.json({ message: "Finance updated successfully" });
   } catch (err) {
-    console.error("❌ Finance update error:");
-    console.error("Message:", err.message);
-    console.error("Detail:", err.detail);
-    console.error("Code:", err.code);
-
+    console.error("❌ Finance update error:", err.message);
     res.status(500).json({
-      message: "Finance update failed",
-      error: err.message
+      message: "Something went wrong while updating finance. Please try again."
     });
   }
 });
