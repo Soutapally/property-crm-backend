@@ -1091,6 +1091,7 @@ app.get("/api/followups", async (req, res) => {
 //GET api to get one followup 
 // ⭐ GET one followup (for EDIT)
 app.get("/api/edit-followup/:id", async (req, res) => {
+  console.log("Fetching followup ID:", req.params.id);
   const sql = `
     SELECT 
       f.followup_id,
@@ -2352,19 +2353,27 @@ app.put("/api/finance/:id", async (req, res) => {
   console.log("ID:", req.params.id);
   console.log("Body:", req.body);
 
-  let {
-    type,
-    category,
-    property_name,
-    amount,
-    record_date,
-    notes,
-    employee_id,
-    employee_amount
+  // Destructure with defaults
+  const {
+    type = "",
+    category = "",
+    property_name = null,
+    amount = null,
+    record_date = "",
+    notes = null,
+    employee_id = null,    // Default to null
+    employee_amount = null // Default to null
   } = req.body;
 
-  const isEmployeeCategory =
-    category === "Salary" || category === "Incentives";
+  console.log("Parsed values:");
+  console.log("- employee_id:", employee_id, "type:", typeof employee_id);
+  console.log("- employee_amount:", employee_amount, "type:", typeof employee_amount);
+
+  const isEmployeeCategory = 
+    category === "Salary" || 
+    category === "Incentives";
+
+  console.log("isEmployeeCategory:", isEmployeeCategory);
 
   // ---------- VALIDATIONS ----------
 
@@ -2386,10 +2395,31 @@ app.put("/api/finance/:id", async (req, res) => {
     });
   }
 
-  if (amount === null || amount === undefined || isNaN(amount)) {
-    return res.status(400).json({
-      message: "Please enter a valid amount"
-    });
+  // Determine which amount to validate based on category
+  let finalAmount;
+  if (isEmployeeCategory) {
+    // For Salary/Incentives: validate employee_amount
+    if (employee_amount === null || employee_amount === "" || isNaN(employee_amount)) {
+      return res.status(400).json({
+        message: "Please enter employee amount"
+      });
+    }
+    finalAmount = parseFloat(employee_amount);
+    
+    // Also validate employee_id
+    if (!employee_id) {
+      return res.status(400).json({
+        message: "Please select an employee"
+      });
+    }
+  } else {
+    // For non-employee categories: validate regular amount
+    if (amount === null || amount === "" || isNaN(amount)) {
+      return res.status(400).json({
+        message: "Please enter a valid amount"
+      });
+    }
+    finalAmount = parseFloat(amount);
   }
 
   // Commission validation
@@ -2401,49 +2431,24 @@ app.put("/api/finance/:id", async (req, res) => {
     }
   }
 
-  // Salary / Incentives validation
-  if (isEmployeeCategory) {
-    if (!employee_id) {
-      return res.status(400).json({
-        message: "Please select an employee"
-      });
-    }
+  // ---------- PREPARE DATABASE VALUES ----------
 
-    if (!employee_amount || isNaN(employee_amount)) {
-      return res.status(400).json({
-        message: "Please enter employee amount"
-      });
-    }
+  // Convert values for database
+  const dbAmount = finalAmount;
+  const dbEmployeeId = isEmployeeCategory ? parseInt(employee_id) : null;
+  const dbEmployeeAmount = isEmployeeCategory ? parseFloat(employee_amount) : null;
+  const dbPropertyName = isEmployeeCategory ? null : (property_name?.trim() || null);
+  const dbNotes = notes?.trim() || null;
 
-    // Salary/Incentives must NOT have property name
-    property_name = null;
-  }
-
-  // Non-employee categories cleanup
-  if (!isEmployeeCategory) {
-    employee_id = null;
-    employee_amount = null;
-  }
+  console.log("Database values:");
+  console.log("- dbAmount:", dbAmount);
+  console.log("- dbEmployeeId:", dbEmployeeId);
+  console.log("- dbEmployeeAmount:", dbEmployeeAmount);
+  console.log("- dbPropertyName:", dbPropertyName);
 
   // ---------- UPDATE ----------
 
   try {
-    // Convert amount to proper numeric format
-    const amountNum = parseFloat(amount);
-    const employeeAmountNum = employee_amount ? parseFloat(employee_amount) : null;
-
-    console.log("Update params:", [
-      type,
-      category,
-      property_name?.trim() || null,
-      amountNum,
-      record_date,
-      notes?.trim() || null,
-      employee_id,
-      employeeAmountNum,
-      req.params.id
-    ]);
-
     const result = await db.query(
       `
       UPDATE finances 
@@ -2455,20 +2460,19 @@ app.put("/api/finance/:id", async (req, res) => {
         record_date = $5,
         notes = $6,
         employee_id = $7,
-        employee_amount = $8,
-        updated_at = CURRENT_TIMESTAMP
+        employee_amount = $8
       WHERE finance_id = $9
       RETURNING *
       `,
       [
         type,
         category,
-        property_name?.trim() || null,
-        amountNum,
+        dbPropertyName,
+        dbAmount,
         record_date,
-        notes?.trim() || null,
-        employee_id,
-        employeeAmountNum,
+        dbNotes,
+        dbEmployeeId,
+        dbEmployeeAmount,
         req.params.id
       ]
     );
@@ -2489,19 +2493,26 @@ app.put("/api/finance/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ Database error in UPDATE:", err);
     
-    // Provide specific error messages
-    let errorMessage = "Something went wrong while updating finance";
-    
-    if (err.code === '23505') {
-      errorMessage = "Duplicate record error";
+    // Check for specific PostgreSQL errors
+    if (err.code === '22P02') {
+      // Invalid input syntax error
+      return res.status(400).json({
+        message: "Invalid data format. Please check all fields are correct."
+      });
     } else if (err.code === '23503') {
-      errorMessage = "Referenced employee not found";
-    } else if (err.code === '22P02') {
-      errorMessage = "Invalid data format (check number fields)";
+      // Foreign key violation
+      return res.status(400).json({
+        message: "Selected employee does not exist in the system."
+      });
+    } else if (err.message && err.message.includes('employee_id')) {
+      // Column doesn't exist
+      return res.status(500).json({
+        message: "Database schema error: employee_id column might not exist."
+      });
     }
     
     res.status(500).json({
-      message: `${errorMessage}: ${err.message}`
+      message: `Database error: ${err.message || "Unknown error"}`
     });
   }
 });
