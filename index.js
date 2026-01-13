@@ -2361,13 +2361,17 @@ app.put("/api/finance/:id", async (req, res) => {
     amount = null,
     record_date = "",
     notes = null,
-    employee_id = null,    // Default to null
-    employee_amount = null // Default to null
+    employee_id = null,
+    employee_amount = null
   } = req.body;
 
   console.log("Parsed values:");
-  console.log("- employee_id:", employee_id, "type:", typeof employee_id);
-  console.log("- employee_amount:", employee_amount, "type:", typeof employee_amount);
+  console.log("- type:", type);
+  console.log("- category:", category);
+  console.log("- property_name:", property_name);
+  console.log("- amount:", amount);
+  console.log("- employee_id:", employee_id);
+  console.log("- employee_amount:", employee_amount);
 
   const isEmployeeCategory = 
     category === "Salary" || 
@@ -2440,11 +2444,15 @@ app.put("/api/finance/:id", async (req, res) => {
   const dbPropertyName = isEmployeeCategory ? null : (property_name?.trim() || null);
   const dbNotes = notes?.trim() || null;
 
-  console.log("Database values:");
-  console.log("- dbAmount:", dbAmount);
-  console.log("- dbEmployeeId:", dbEmployeeId);
-  console.log("- dbEmployeeAmount:", dbEmployeeAmount);
-  console.log("- dbPropertyName:", dbPropertyName);
+  console.log("Database values to update:");
+  console.log("- type:", type);
+  console.log("- category:", category);
+  console.log("- property_name:", dbPropertyName);
+  console.log("- amount:", dbAmount);
+  console.log("- record_date:", record_date);
+  console.log("- notes:", dbNotes);
+  console.log("- employee_id:", dbEmployeeId);
+  console.log("- employee_amount:", dbEmployeeAmount);
 
   // ---------- UPDATE ----------
 
@@ -2461,6 +2469,7 @@ app.put("/api/finance/:id", async (req, res) => {
         notes = $6,
         employee_id = $7,
         employee_amount = $8
+        -- REMOVED: updated_at = CURRENT_TIMESTAMP (column doesn't exist)
       WHERE finance_id = $9
       RETURNING *
       `,
@@ -2492,22 +2501,13 @@ app.put("/api/finance/:id", async (req, res) => {
 
   } catch (err) {
     console.error("❌ Database error in UPDATE:", err);
+    console.error("❌ Error message:", err.message);
+    console.error("❌ Error detail:", err.detail);
     
-    // Check for specific PostgreSQL errors
-    if (err.code === '22P02') {
-      // Invalid input syntax error
-      return res.status(400).json({
-        message: "Invalid data format. Please check all fields are correct."
-      });
-    } else if (err.code === '23503') {
-      // Foreign key violation
-      return res.status(400).json({
-        message: "Selected employee does not exist in the system."
-      });
-    } else if (err.message && err.message.includes('employee_id')) {
-      // Column doesn't exist
+    // Check for column doesn't exist error
+    if (err.message && err.message.includes('has no field')) {
       return res.status(500).json({
-        message: "Database schema error: employee_id column might not exist."
+        message: `Database column error: ${err.message}. Please check your database schema.`
       });
     }
     
