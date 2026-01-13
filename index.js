@@ -2348,6 +2348,10 @@ app.get("/api/finance/:id", async (req, res) => {
 //   }
 // });
 app.put("/api/finance/:id", async (req, res) => {
+  console.log("========== UPDATE FINANCE REQUEST ==========");
+  console.log("ID:", req.params.id);
+  console.log("Body:", req.body);
+
   let {
     type,
     category,
@@ -2362,7 +2366,7 @@ app.put("/api/finance/:id", async (req, res) => {
   const isEmployeeCategory =
     category === "Salary" || category === "Incentives";
 
-  // ---------- USER-FRIENDLY VALIDATIONS ----------
+  // ---------- VALIDATIONS ----------
 
   if (!type) {
     return res.status(400).json({
@@ -2388,6 +2392,15 @@ app.put("/api/finance/:id", async (req, res) => {
     });
   }
 
+  // Commission validation
+  if (category === "Commission") {
+    if (!property_name || !property_name.trim()) {
+      return res.status(400).json({
+        message: "Please enter property name for commission"
+      });
+    }
+  }
+
   // Salary / Incentives validation
   if (isEmployeeCategory) {
     if (!employee_id) {
@@ -2406,15 +2419,6 @@ app.put("/api/finance/:id", async (req, res) => {
     property_name = null;
   }
 
-  // Commission validation
-  if (category === "Commission") {
-    if (!property_name || !property_name.trim()) {
-      return res.status(400).json({
-        message: "Please enter property name for commission"
-      });
-    }
-  }
-
   // Non-employee categories cleanup
   if (!isEmployeeCategory) {
     employee_id = null;
@@ -2424,9 +2428,26 @@ app.put("/api/finance/:id", async (req, res) => {
   // ---------- UPDATE ----------
 
   try {
-    await db.query(
+    // Convert amount to proper numeric format
+    const amountNum = parseFloat(amount);
+    const employeeAmountNum = employee_amount ? parseFloat(employee_amount) : null;
+
+    console.log("Update params:", [
+      type,
+      category,
+      property_name?.trim() || null,
+      amountNum,
+      record_date,
+      notes?.trim() || null,
+      employee_id,
+      employeeAmountNum,
+      req.params.id
+    ]);
+
+    const result = await db.query(
       `
-      UPDATE finances SET
+      UPDATE finances 
+      SET 
         type = $1,
         category = $2,
         property_name = $3,
@@ -2434,31 +2455,56 @@ app.put("/api/finance/:id", async (req, res) => {
         record_date = $5,
         notes = $6,
         employee_id = $7,
-        employee_amount = $8
+        employee_amount = $8,
+        updated_at = CURRENT_TIMESTAMP
       WHERE finance_id = $9
+      RETURNING *
       `,
       [
         type,
         category,
         property_name?.trim() || null,
-        amount,
+        amountNum,
         record_date,
         notes?.trim() || null,
         employee_id,
-        employee_amount,
+        employeeAmountNum,
         req.params.id
       ]
     );
 
-    res.json({ message: "Finance updated successfully" });
+    if (result.rowCount === 0) {
+      console.log("No record found with ID:", req.params.id);
+      return res.status(404).json({
+        message: `Finance record with ID ${req.params.id} not found`
+      });
+    }
+
+    console.log("✅ UPDATE successful. Updated row:", result.rows[0]);
+    res.json({ 
+      message: "Finance updated successfully",
+      data: result.rows[0]
+    });
+
   } catch (err) {
-    console.error("❌ Finance update error:", err.message);
+    console.error("❌ Database error in UPDATE:", err);
+    
+    // Provide specific error messages
+    let errorMessage = "Something went wrong while updating finance";
+    
+    if (err.code === '23505') {
+      errorMessage = "Duplicate record error";
+    } else if (err.code === '23503') {
+      errorMessage = "Referenced employee not found";
+    } else if (err.code === '22P02') {
+      errorMessage = "Invalid data format (check number fields)";
+    }
+    
     res.status(500).json({
-      message: "Something went wrong while updating finance. Please try again."
+      message: `${errorMessage}: ${err.message}`
     });
   }
 });
-
 
 // delete finance record
 app.delete("/api/finance/:id", async (req, res) => {
