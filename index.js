@@ -2196,6 +2196,9 @@ app.delete("/api/sale/:id", async (req, res) => {
 //   }
 // });
 app.post("/api/add-finance", async (req, res) => {
+  console.log("========== ADD FINANCE REQUEST ==========");
+  console.log("Request body:", req.body);
+  
   const {
     type,
     category,
@@ -2207,12 +2210,24 @@ app.post("/api/add-finance", async (req, res) => {
     employee_amount
   } = req.body;
 
+  // Log all values
+  console.log("Values to insert:");
+  console.log("- type:", type);
+  console.log("- category:", category);
+  console.log("- property_name:", property_name);
+  console.log("- amount:", amount);
+  console.log("- record_date:", record_date);
+  console.log("- notes:", notes);
+  console.log("- employee_id:", employee_id);
+  console.log("- employee_amount:", employee_amount);
+
   try {
-    await db.query(
+    const result = await db.query(
       `
       INSERT INTO finances
       (type, category, property_name, amount, record_date, notes, employee_id, employee_amount)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      RETURNING *
       `,
       [
         type,
@@ -2226,10 +2241,27 @@ app.post("/api/add-finance", async (req, res) => {
       ]
     );
 
-    res.json({ message: "Finance record added successfully" });
+    console.log("✅ INSERT successful. Inserted row:", result.rows[0]);
+    res.json({ 
+      message: "Finance record added successfully",
+      data: result.rows[0]
+    });
+    
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Finance insert failed" });
+    console.error("❌ DATABASE INSERT ERROR:");
+    console.error("Error message:", err.message);
+    console.error("Error detail:", err.detail);
+    console.error("Error code:", err.code);
+    console.error("Error stack:", err.stack);
+    console.error("Full error object:", err);
+    
+    // Send detailed error in response for debugging
+    res.status(500).json({ 
+      message: "Finance insert failed",
+      error: err.message,
+      detail: err.detail,
+      code: err.code
+    });
   }
 });
 
