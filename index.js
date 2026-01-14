@@ -1051,10 +1051,38 @@ app.post("/api/add-followup", async (req, res) => {
 });
 
 
-
-
 //get api for getting all followups
 // ⭐ GET all followups with customer + property
+// app.get("/api/followups", async (req, res) => {
+//   const sql = `
+//     SELECT 
+//       f.followup_id,
+//       f.next_followup_at,
+//       f.status,
+//       f.notes,
+//       c.name AS customer_name,
+//       COALESCE(STRING_AGG(DISTINCT p.property_name, ', '), '') AS properties
+//     FROM followups f
+//     LEFT JOIN customers c ON c.customer_id = f.customer_id
+//     LEFT JOIN followup_properties fp ON fp.followup_id = f.followup_id
+//     LEFT JOIN properties p ON p.property_id = fp.property_id
+//     GROUP BY 
+//       f.followup_id,
+//       f.next_followup_at,
+//       f.status,
+//       f.notes,
+//       c.name
+//     ORDER BY f.next_followup_at ASC
+//   `;
+
+//   try {
+//     const result = await db.query(sql);
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Failed to load followups" });
+//   }
+// });
 app.get("/api/followups", async (req, res) => {
   const sql = `
     SELECT 
@@ -1063,7 +1091,7 @@ app.get("/api/followups", async (req, res) => {
       f.status,
       f.notes,
       c.name AS customer_name,
-      COALESCE(STRING_AGG(DISTINCT p.property_name, ', '), '') AS properties
+      COALESCE(STRING_AGG(DISTINCT p.property_name, ', '), 'No property') AS properties
     FROM followups f
     LEFT JOIN customers c ON c.customer_id = f.customer_id
     LEFT JOIN followup_properties fp ON fp.followup_id = f.followup_id
@@ -1079,13 +1107,20 @@ app.get("/api/followups", async (req, res) => {
 
   try {
     const result = await db.query(sql);
+    
+    // DEBUG: Log what we're getting from database
+    console.log("Followups from DB:", result.rows.map(r => ({
+      id: r.followup_id,
+      date: r.next_followup_at,
+      customer: r.customer_name
+    })));
+    
     res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to load followups" });
   }
 });
-
 
 
 //GET api to get one followup 
@@ -1184,9 +1219,6 @@ app.put("/api/update-followup/:id", async (req, res) => {
     res.status(500).json({ message: "Follow-up update failed" });
   }
 });
-
-
-
 
 
 
@@ -2195,10 +2227,76 @@ app.delete("/api/sale/:id", async (req, res) => {
 //     res.status(500).json({ message: "Finance insert failed" });
 //   }
 // });
-app.post("/api/add-finance", async (req, res) => {
-  console.log("========== ADD FINANCE REQUEST ==========");
-  console.log("Request body:", req.body);
+// app.post("/api/add-finance", async (req, res) => {
+//   console.log("========== ADD FINANCE REQUEST ==========");
+//   console.log("Request body:", req.body);
   
+//   const {
+//     type,
+//     category,
+//     property_name,
+//     amount,
+//     record_date,
+//     notes,
+//     employee_id,
+//     employee_amount
+//   } = req.body;
+
+//   // Log all values
+//   console.log("Values to insert:");
+//   console.log("- type:", type);
+//   console.log("- category:", category);
+//   console.log("- property_name:", property_name);
+//   console.log("- amount:", amount);
+//   console.log("- record_date:", record_date);
+//   console.log("- notes:", notes);
+//   console.log("- employee_id:", employee_id);
+//   console.log("- employee_amount:", employee_amount);
+
+//   try {
+//     const result = await db.query(
+//       `
+//       INSERT INTO finances
+//       (type, category, property_name, amount, record_date, notes, employee_id, employee_amount)
+//       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+//       RETURNING *
+//       `,
+//       [
+//         type,
+//         category,
+//         property_name ?? null,
+//         amount,
+//         record_date,
+//         notes ?? null,
+//         employee_id ?? null,
+//         employee_amount ?? null
+//       ]
+//     );
+
+//     console.log("✅ INSERT successful. Inserted row:", result.rows[0]);
+//     res.json({ 
+//       message: "Finance record added successfully",
+//       data: result.rows[0]
+//     });
+    
+//   } catch (err) {
+//     console.error("❌ DATABASE INSERT ERROR:");
+//     console.error("Error message:", err.message);
+//     console.error("Error detail:", err.detail);
+//     console.error("Error code:", err.code);
+//     console.error("Error stack:", err.stack);
+//     console.error("Full error object:", err);
+    
+//     // Send detailed error in response for debugging
+//     res.status(500).json({ 
+//       message: "Finance insert failed",
+//       error: err.message,
+//       detail: err.detail,
+//       code: err.code
+//     });
+//   }
+// });
+app.post("/api/add-finance", async (req, res) => {
   const {
     type,
     category,
@@ -2210,24 +2308,12 @@ app.post("/api/add-finance", async (req, res) => {
     employee_amount
   } = req.body;
 
-  // Log all values
-  console.log("Values to insert:");
-  console.log("- type:", type);
-  console.log("- category:", category);
-  console.log("- property_name:", property_name);
-  console.log("- amount:", amount);
-  console.log("- record_date:", record_date);
-  console.log("- notes:", notes);
-  console.log("- employee_id:", employee_id);
-  console.log("- employee_amount:", employee_amount);
-
   try {
-    const result = await db.query(
+    await db.query(
       `
       INSERT INTO finances
       (type, category, property_name, amount, record_date, notes, employee_id, employee_amount)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      RETURNING *
       `,
       [
         type,
@@ -2241,30 +2327,15 @@ app.post("/api/add-finance", async (req, res) => {
       ]
     );
 
-    console.log("✅ INSERT successful. Inserted row:", result.rows[0]);
-    res.json({ 
-      message: "Finance record added successfully",
-      data: result.rows[0]
-    });
-    
+    res.json({ message: "Finance record added successfully" });
   } catch (err) {
-    console.error("❌ DATABASE INSERT ERROR:");
+    console.error("Finance insert error:", err);
     console.error("Error message:", err.message);
     console.error("Error detail:", err.detail);
-    console.error("Error code:", err.code);
-    console.error("Error stack:", err.stack);
-    console.error("Full error object:", err);
     
-    // Send detailed error in response for debugging
-    res.status(500).json({ 
-      message: "Finance insert failed",
-      error: err.message,
-      detail: err.detail,
-      code: err.code
-    });
+    res.status(500).json({ message: "Finance insert failed" });
   }
 });
-
 
 //Get all finance records
 // app.get("/api/finances", async (req, res) => {
