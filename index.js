@@ -217,35 +217,41 @@ app.get("/api/admin/users", async (req, res) => {
 //   }
 // });
 app.post("/api/add-customer", async (req, res) => {
-  const { 
-    name, phone, phone_alt, email,
-    budget_from, budget_to,
-    location, property_type,
-    requirement, status
+
+  const {
+    name,
+    phone,
+    phone_alt,
+    email,
+    budget_from,
+    budget_to,
+    location,
+    property_types,   // ⭐ ARRAY NOW
+    requirement,
+    status
   } = req.body;
 
   if (!name || !phone) {
     return res.status(400).json({ message: "Name & Phone required" });
   }
 
-  const emailValue =
-    email && email.trim() !== "" ? email.trim() : null;
-
-  const phoneAltValue =
-    phone_alt && phone_alt.trim() !== "" ? phone_alt.trim() : null;
+  const emailValue = email?.trim() || null;
+  const phoneAltValue = phone_alt?.trim() || null;
 
   const sql = `
     INSERT INTO customers (
       name, phone, phone_alt, email,
       budget_min, budget_max,
-      preferred_location, property_type,
+      preferred_location,
       requirement_details, lead_status
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    RETURNING customer_id
   `;
 
   try {
-    await db.query(sql, [
+
+    const result = await db.query(sql, [
       name,
       phone,
       phoneAltValue,
@@ -253,12 +259,30 @@ app.post("/api/add-customer", async (req, res) => {
       budget_from,
       budget_to,
       location,
-      property_type,
       requirement,
       status
     ]);
 
+    const customerId = result.rows[0].customer_id;
+
+    // ⭐ Insert property types
+    if (property_types && property_types.length > 0) {
+
+      const values = property_types
+        .map((_, i) => `($1,$${i + 2})`)
+        .join(",");
+
+      const mapSql = `
+        INSERT INTO customer_property_types (customer_id, type_id)
+        VALUES ${values}
+      `;
+
+      await db.query(mapSql, [customerId, ...property_types]);
+
+    }
+
     res.json({ message: "Customer added successfully" });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Insert failed" });
@@ -354,27 +378,34 @@ app.get("/api/customers", async (req, res) => {
 //   }
 // });
 app.get("/api/customer/:id", async (req, res) => {
+
   const { id } = req.params;
 
   const sql = `
     SELECT 
-      customer_id,
-      name,
-      COALESCE(email, '') AS email,
-      phone,
-      COALESCE(phone_alt, '') AS phone_alt,
-      COALESCE(preferred_location, '') AS preferred_location,
-      COALESCE(property_type, '') AS property_type,
-      COALESCE(requirement_details, '') AS requirement_details,
-      budget_min,
-      budget_max,
-      lead_status,
-      created_at
-    FROM customers
-    WHERE customer_id = $1
+      c.customer_id,
+      c.name,
+      c.phone,
+      c.email,
+      c.phone_alt,
+      c.budget_min,
+      c.budget_max,
+      c.preferred_location,
+      c.requirement_details,
+      c.lead_status,
+      c.created_at,
+      ARRAY_AGG(pt.type_id) AS property_types
+    FROM customers c
+    LEFT JOIN customer_property_types cpt
+      ON c.customer_id = cpt.customer_id
+    LEFT JOIN property_types pt
+      ON pt.type_id = cpt.type_id
+    WHERE c.customer_id = $1
+    GROUP BY c.customer_id
   `;
 
   try {
+
     const result = await db.query(sql, [id]);
 
     if (!result.rows.length) {
@@ -382,6 +413,7 @@ app.get("/api/customer/:id", async (req, res) => {
     }
 
     res.json(result.rows[0]);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Fetch failed" });
@@ -389,8 +421,176 @@ app.get("/api/customer/:id", async (req, res) => {
 });
 
 
+// ✅ UPDATE CUSTOMER (NULL-safe)
+// app.put("/api/update-customer/:id", async (req, res) => {
+//   const { id } = req.params;
 
-//Get one customer id to edit customer 
+//   const {
+//     name,
+//     phone,
+//     phone_alt,
+//     email,
+//     budget_from,
+//     budget_to,
+//     location,
+//     property_type,
+//     requirement,
+//     status
+//   } = req.body;
+
+//   if (!name) {
+//     return res.status(400).json({ message: "Name & Phone required" });
+//   }
+
+//   // ✅ NULL safety
+//   const emailValue =
+//     email && email.trim() !== "" ? email.trim() : null;
+
+//   const phoneAltValue =
+//     phone_alt && phone_alt.trim() !== "" ? phone_alt.trim() : null;
+
+//   const sql = `
+//     UPDATE customers SET
+//       name = $1,
+//       phone = $2,
+//       phone_alt = $3,
+//       email = $4,
+//       budget_min = $5,
+//       budget_max = $6,
+//       preferred_location = $7,
+//       property_type = $8,
+//       requirement_details = $9,
+//       lead_status = $10
+//     WHERE customer_id = $11
+//   `;
+
+//   try {
+//     const result = await db.query(sql, [
+//       name,
+//       phone,
+//       phoneAltValue,
+//       emailValue,
+//       budget_from,
+//       budget_to,
+//       location,
+//       property_type,
+//       requirement,
+//       status,
+//       id
+//     ]);
+
+//     if (result.rowCount === 0) {
+//       return res.status(404).json({ message: "Customer not found" });
+//     }
+
+//     res.json({ message: "Customer updated successfully" });
+//   } catch (err) {
+//     console.error("❌ Update failed:", err);
+//     res.status(500).json({ message: "Update failed" });
+//   }
+// });
+app.put("/api/update-customer/:id", async (req, res) => {
+
+  const { id } = req.params;
+
+  const {
+    name,
+    phone,
+    phone_alt,
+    email,
+    budget_from,
+    budget_to,
+    location,
+    property_types,
+    requirement,
+    status
+  } = req.body;
+
+  const emailValue = email?.trim() || null;
+  const phoneAltValue = phone_alt?.trim() || null;
+
+  const sql = `
+    UPDATE customers SET
+      name = $1,
+      phone = $2,
+      phone_alt = $3,
+      email = $4,
+      budget_min = $5,
+      budget_max = $6,
+      preferred_location = $7,
+      requirement_details = $8,
+      lead_status = $9
+    WHERE customer_id = $10
+  `;
+
+  try {
+
+    await db.query(sql, [
+      name,
+      phone,
+      phoneAltValue,
+      emailValue,
+      budget_from,
+      budget_to,
+      location,
+      requirement,
+      status,
+      id
+    ]);
+
+    // ⭐ Remove old property types
+    await db.query(
+      `DELETE FROM customer_property_types WHERE customer_id=$1`,
+      [id]
+    );
+
+    // ⭐ Insert new property types
+    if (property_types && property_types.length > 0) {
+
+      const values = property_types
+        .map((_, i) => `($1,$${i + 2})`)
+        .join(",");
+
+      const mapSql = `
+        INSERT INTO customer_property_types (customer_id, type_id)
+        VALUES ${values}
+      `;
+
+      await db.query(mapSql, [id, ...property_types]);
+    }
+
+    res.json({ message: "Customer updated successfully" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Update failed" });
+  }
+});
+
+// DELETE customer
+app.delete("/api/delete-customer/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const sql = `
+    DELETE FROM customers
+    WHERE customer_id = $1
+  `;
+
+  try {
+    const result = await db.query(sql, [id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    res.json({ message: "Customer deleted successfully" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Delete failed" });
+  }
+});
+
 // GET single user by ID (for edit)
 app.get("/api/admin/users/:id", async (req, res) => {
   const { id } = req.params;
@@ -412,75 +612,6 @@ app.get("/api/admin/users/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "DB error" });
-  }
-});
-
-// ✅ UPDATE CUSTOMER (NULL-safe)
-app.put("/api/update-customer/:id", async (req, res) => {
-  const { id } = req.params;
-
-  const {
-    name,
-    phone,
-    phone_alt,
-    email,
-    budget_from,
-    budget_to,
-    location,
-    property_type,
-    requirement,
-    status
-  } = req.body;
-
-  if (!name) {
-    return res.status(400).json({ message: "Name & Phone required" });
-  }
-
-  // ✅ NULL safety
-  const emailValue =
-    email && email.trim() !== "" ? email.trim() : null;
-
-  const phoneAltValue =
-    phone_alt && phone_alt.trim() !== "" ? phone_alt.trim() : null;
-
-  const sql = `
-    UPDATE customers SET
-      name = $1,
-      phone = $2,
-      phone_alt = $3,
-      email = $4,
-      budget_min = $5,
-      budget_max = $6,
-      preferred_location = $7,
-      property_type = $8,
-      requirement_details = $9,
-      lead_status = $10
-    WHERE customer_id = $11
-  `;
-
-  try {
-    const result = await db.query(sql, [
-      name,
-      phone,
-      phoneAltValue,
-      emailValue,
-      budget_from,
-      budget_to,
-      location,
-      property_type,
-      requirement,
-      status,
-      id
-    ]);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Customer not found" });
-    }
-
-    res.json({ message: "Customer updated successfully" });
-  } catch (err) {
-    console.error("❌ Update failed:", err);
-    res.status(500).json({ message: "Update failed" });
   }
 });
 
@@ -517,7 +648,6 @@ app.put("/api/admin/users/:id", async (req, res) => {
 });
 
 
-// 🗑️ DELETE customer
 // DELETE user
 app.delete("/api/admin/users/:id", async (req, res) => {
   const { id } = req.params;
