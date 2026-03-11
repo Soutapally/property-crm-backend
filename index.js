@@ -1087,7 +1087,7 @@ app.get("/api/followups", async (req, res) => {
   const sql = `
     SELECT 
       f.followup_id,
-      f.next_followup_at,
+      f.next_followup_at AT TIME ZONE 'Asia/Kolkata' AS next_followup_at,
       f.status,
       f.notes,
       c.name AS customer_name,
