@@ -1102,7 +1102,7 @@ app.put("/api/update-property/:id", async (req, res) => {
 
   try {
 
-    const {
+    let {
       seller_id,
       property_name,
       property_types,
@@ -1116,6 +1116,10 @@ app.put("/api/update-property/:id", async (req, res) => {
       availability,
       description
     } = req.body;
+
+    // FIX EMPTY NUMERIC VALUES
+    price = price === "" || price === undefined ? null : Number(price);
+    area_value = area_value === "" || area_value === undefined ? null : Number(area_value);
 
     await client.query("BEGIN");
 
@@ -1151,7 +1155,7 @@ app.put("/api/update-property/:id", async (req, res) => {
       ]
     );
 
-    // remove old types
+    // remove old property types
     await client.query(
       `DELETE FROM property_property_types WHERE property_id=$1`,
       [propertyId]
@@ -1184,7 +1188,7 @@ app.put("/api/update-property/:id", async (req, res) => {
   } catch (err) {
 
     await client.query("ROLLBACK");
-    console.error(err);
+    console.error("UPDATE PROPERTY ERROR:", err);
 
     res.status(500).json({
       message: "Database update error"
