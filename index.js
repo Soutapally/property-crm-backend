@@ -909,12 +909,15 @@ app.delete("/api/delete-seller/:id", async (req, res) => {
 
 //ADD PROPERTY
 app.post("/api/add-property", async (req, res) => {
+
+  const client = await db.connect();
+
   try {
 
     const {
       seller_id,
       property_name,
-      property_type,
+      property_types,   // array
       price,
       area_value,
       area_unit,
@@ -928,23 +931,18 @@ app.post("/api/add-property", async (req, res) => {
 
     if (!seller_id || !property_name) {
       return res.status(400).json({
-        message: "Seller ID & Property Name are required"
+        message: "Seller ID & Property Name required"
       });
     }
 
-    // Convert empty values → null
-    const normalize = (v) => {
-      if (v === undefined || v === null) return null;
-      if (typeof v === "string" && v.trim() === "") return null;
-      return v;
-    };
+    await client.query("BEGIN");
 
-    const sql = `
-      INSERT INTO properties 
+    const propertyResult = await client.query(
+      `
+      INSERT INTO properties
       (
         seller_id,
         property_name,
-        property_type,
         price,
         area_value,
         area_unit,
@@ -955,145 +953,240 @@ app.post("/api/add-property", async (req, res) => {
         availability,
         description
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-    `;
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      RETURNING property_id
+      `,
+      [
+        seller_id,
+        property_name,
+        price,
+        area_value,
+        area_unit,
+        facing_direction,
+        mandal,
+        address,
+        district,
+        availability,
+        description
+      ]
+    );
 
-    await db.query(sql, [
-      Number(seller_id),
-      property_name,
-      normalize(property_type),
-      normalize(price),
-      normalize(area_value),
-      normalize(area_unit),
-      normalize(facing_direction),
-      normalize(mandal),
-      normalize(address),
-      normalize(district),
-      normalize(availability),
-      normalize(description)
-    ]);
+    const property_id = propertyResult.rows[0].property_id;
 
-    res.status(200).json({
-      message: "Property saved successfully!"
-    });
+    if (property_types && property_types.length > 0) {
+
+      for (let type_id of property_types) {
+
+        await client.query(
+          `
+          INSERT INTO property_property_types
+          (property_id, type_id)
+          VALUES ($1,$2)
+          `,
+          [property_id, type_id]
+        );
+
+      }
+
+    }
+
+    await client.query("COMMIT");
+
+    res.json({ message: "Property saved successfully" });
 
   } catch (err) {
-    console.error("❌ Property Insert Error:", err);
+
+    await client.query("ROLLBACK");
+    console.error(err);
+
     res.status(500).json({
       message: "Database insert error"
     });
+
+  } finally {
+    client.release();
   }
+
 });
 
 
 // GET ALL PROPERTIES (with seller name)
 app.get("/api/properties", async (req, res) => {
-  const sql = `
-    SELECT 
-      p.*, 
-      s.name AS owner_name
-    FROM properties p
-    LEFT JOIN sellers s ON p.seller_id = s.seller_id
-    ORDER BY p.property_id DESC
-  `;
 
   try {
-    const result = await db.query(sql);
-    res.status(200).json(result.rows);
+
+    const result = await db.query(`
+    
+      SELECT 
+        p.*,
+        s.name AS owner_name,
+        STRING_AGG(pt.type_name, ', ') AS property_types
+        
+      FROM properties p
+      
+      LEFT JOIN sellers s 
+      ON p.seller_id = s.seller_id
+      
+      LEFT JOIN property_property_types ppt
+      ON p.property_id = ppt.property_id
+      
+      LEFT JOIN property_types pt
+      ON ppt.type_id = pt.type_id
+      
+      GROUP BY p.property_id, s.name
+      
+      ORDER BY p.property_id DESC
+    
+    `);
+
+    res.json(result.rows);
+
   } catch (err) {
-    console.error("❌ Error fetching properties:", err);
-    res.status(500).json({ message: "Database fetch error" });
+
+    console.error(err);
+
+    res.status(500).json({
+      message: "Database fetch error"
+    });
+
   }
+
 });
 
 
 // GET Single Property by ID
 app.get("/api/property/:id", async (req, res) => {
+
   const propertyId = req.params.id;
 
-  const sql = `
-    SELECT 
-      p.*, 
-      s.name AS owner_name
-    FROM properties p
-    LEFT JOIN sellers s ON p.seller_id = s.seller_id
-    WHERE p.property_id = $1
-  `;
-
   try {
-    const result = await db.query(sql, [propertyId]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Property not found" });
-    }
+    const property = await db.query(
+      `SELECT * FROM properties WHERE property_id=$1`,
+      [propertyId]
+    );
 
-    res.status(200).json(result.rows[0]);
+    const types = await db.query(
+      `
+      SELECT type_id 
+      FROM property_property_types 
+      WHERE property_id=$1
+      `,
+      [propertyId]
+    );
+
+    res.json({
+      ...property.rows[0],
+      property_types: types.rows.map(t => t.type_id)
+    });
+
   } catch (err) {
-    console.error("❌ Error fetching property:", err);
-    res.status(500).json({ message: "Database fetch error" });
+
+    console.error(err);
+
+    res.status(500).json({
+      message: "Database fetch error"
+    });
+
   }
+
 });
 
 
 //Update the property details in the properties table
 app.put("/api/update-property/:id", async (req, res) => {
+
+  const client = await db.connect();
   const propertyId = req.params.id;
 
-  const {
-    seller_id,
-    property_name,
-    property_type,
-    price,
-    area_value,
-    area_unit,
-    facing_direction,
-    mandal,
-    address,
-    district,
-    availability,
-    description
-  } = req.body;
-
-  const sql = `
-    UPDATE properties SET
-      seller_id = $1,
-      property_name = $2,
-      property_type = $3,
-      price = $4,
-      area_value = $5,
-      area_unit = $6,
-      facing_direction = $7,
-      mandal = $8,
-      address = $9,
-      district = $10,
-      availability = $11,
-      description = $12
-    WHERE property_id = $13
-  `;
-
   try {
-   await db.query(sql, [
-  seller_id,
-  property_name,
-  normalize(property_type),
-  price ? Number(price) : null,   // ⭐ FIXED
-  normalize(area_value),
-  normalize(area_unit),
-  normalize(facing_direction),
-  normalize(mandal),
-  normalize(address),
-  normalize(district),
-  normalize(availability),
-  normalize(description),
-  propertyId
-]);
 
+    const {
+      seller_id,
+      property_name,
+      property_types,
+      price,
+      area_value,
+      area_unit,
+      facing_direction,
+      mandal,
+      address,
+      district,
+      availability,
+      description
+    } = req.body;
 
-    res.status(200).json({ message: "Property updated successfully!" });
+    await client.query("BEGIN");
+
+    await client.query(
+      `
+      UPDATE properties SET
+        seller_id=$1,
+        property_name=$2,
+        price=$3,
+        area_value=$4,
+        area_unit=$5,
+        facing_direction=$6,
+        mandal=$7,
+        address=$8,
+        district=$9,
+        availability=$10,
+        description=$11
+      WHERE property_id=$12
+      `,
+      [
+        seller_id,
+        property_name,
+        price,
+        area_value,
+        area_unit,
+        facing_direction,
+        mandal,
+        address,
+        district,
+        availability,
+        description,
+        propertyId
+      ]
+    );
+
+    await client.query(
+      `DELETE FROM property_property_types WHERE property_id=$1`,
+      [propertyId]
+    );
+
+    for (let type_id of property_types) {
+
+      await client.query(
+        `
+        INSERT INTO property_property_types
+        (property_id, type_id)
+        VALUES ($1,$2)
+        `,
+        [propertyId, type_id]
+      );
+
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: "Property updated successfully"
+    });
+
   } catch (err) {
-    console.error("❌ Property Update Error:", err);
-    res.status(500).json({ message: "Database update error" });
+
+    await client.query("ROLLBACK");
+    console.error(err);
+
+    res.status(500).json({
+      message: "Database update error"
+    });
+
+  } finally {
+    client.release();
   }
+
 });
 
 
