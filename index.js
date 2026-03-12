@@ -917,7 +917,7 @@ app.post("/api/add-property", async (req, res) => {
     const {
       seller_id,
       property_name,
-      property_types,   // array
+      property_types,
       price,
       area_value,
       area_unit,
@@ -937,7 +937,7 @@ app.post("/api/add-property", async (req, res) => {
 
     await client.query("BEGIN");
 
-    const propertyResult = await client.query(
+    const propertyInsert = await client.query(
       `
       INSERT INTO properties
       (
@@ -971,11 +971,11 @@ app.post("/api/add-property", async (req, res) => {
       ]
     );
 
-    const property_id = propertyResult.rows[0].property_id;
+    const property_id = propertyInsert.rows[0].property_id;
 
     if (property_types && property_types.length > 0) {
 
-      for (let type_id of property_types) {
+      for (const type_id of property_types) {
 
         await client.query(
           `
@@ -992,7 +992,9 @@ app.post("/api/add-property", async (req, res) => {
 
     await client.query("COMMIT");
 
-    res.json({ message: "Property saved successfully" });
+    res.json({
+      message: "Property saved successfully"
+    });
 
   } catch (err) {
 
@@ -1008,7 +1010,6 @@ app.post("/api/add-property", async (req, res) => {
   }
 
 });
-
 
 // GET ALL PROPERTIES (with seller name)
 app.get("/api/properties", async (req, res) => {
@@ -1077,7 +1078,7 @@ app.get("/api/property/:id", async (req, res) => {
 
     res.json({
       ...property.rows[0],
-      property_types: types.rows.map(t => t.type_id)
+      property_types: types.rows.map(t => Number(t.type_id))
     });
 
   } catch (err) {
@@ -1150,21 +1151,27 @@ app.put("/api/update-property/:id", async (req, res) => {
       ]
     );
 
+    // remove old types
     await client.query(
       `DELETE FROM property_property_types WHERE property_id=$1`,
       [propertyId]
     );
 
-    for (let type_id of property_types) {
+    // insert new types
+    if (property_types && property_types.length > 0) {
 
-      await client.query(
-        `
-        INSERT INTO property_property_types
-        (property_id, type_id)
-        VALUES ($1,$2)
-        `,
-        [propertyId, type_id]
-      );
+      for (const type_id of property_types) {
+
+        await client.query(
+          `
+          INSERT INTO property_property_types
+          (property_id,type_id)
+          VALUES ($1,$2)
+          `,
+          [propertyId, type_id]
+        );
+
+      }
 
     }
 
@@ -1193,22 +1200,37 @@ app.put("/api/update-property/:id", async (req, res) => {
 
 // 🗑️ DELETE PROPERTY
 app.delete("/api/delete-property/:id", async (req, res) => {
+
   const propertyId = req.params.id;
 
-  const sql = "DELETE FROM properties WHERE property_id = $1";
-
   try {
-    const result = await db.query(sql, [propertyId]);
+
+    await db.query(
+      `DELETE FROM property_property_types WHERE property_id=$1`,
+      [propertyId]
+    );
+
+    const result = await db.query(
+      `DELETE FROM properties WHERE property_id=$1`,
+      [propertyId]
+    );
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Property not found" });
     }
 
     res.json({ message: "Property deleted successfully!" });
+
   } catch (err) {
-    console.error("❌ Property Delete Error:", err);
-    res.status(500).json({ message: "Database delete error" });
+
+    console.error("Delete Error:", err);
+
+    res.status(500).json({
+      message: "Database delete error"
+    });
+
   }
+
 });
 
 
