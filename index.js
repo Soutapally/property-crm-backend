@@ -909,41 +909,57 @@ app.delete("/api/delete-seller/:id", async (req, res) => {
 
 //ADD PROPERTY
 app.post("/api/add-property", async (req, res) => {
-  const {
-    seller_id,
-    property_name,
-    property_type,
-    price,
-    area_value,
-    area_unit,
-    facing_direction,
-    mandal,
-    address,
-    district,
-    availability,
-    description
-  } = req.body;
-
-  if (!seller_id || !property_name) {
-    return res.status(400).json({
-      message: "Seller ID & Property Name are required"
-    });
-  }
-
-  const sql = `
-    INSERT INTO properties 
-    (
-      seller_id, property_name, property_type,
-      price, area_value, area_unit,
-      facing_direction, mandal, address, district,
-      availability, description
-    )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-  `;
-
   try {
-    await db.query(sql, [
+
+    const {
       seller_id,
+      property_name,
+      property_type,
+      price,
+      area_value,
+      area_unit,
+      facing_direction,
+      mandal,
+      address,
+      district,
+      availability,
+      description
+    } = req.body;
+
+    if (!seller_id || !property_name) {
+      return res.status(400).json({
+        message: "Seller ID & Property Name are required"
+      });
+    }
+
+    // Convert empty values → null
+    const normalize = (v) => {
+      if (v === undefined || v === null) return null;
+      if (typeof v === "string" && v.trim() === "") return null;
+      return v;
+    };
+
+    const sql = `
+      INSERT INTO properties 
+      (
+        seller_id,
+        property_name,
+        property_type,
+        price,
+        area_value,
+        area_unit,
+        facing_direction,
+        mandal,
+        address,
+        district,
+        availability,
+        description
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    `;
+
+    await db.query(sql, [
+      Number(seller_id),
       property_name,
       normalize(property_type),
       normalize(price),
@@ -953,14 +969,19 @@ app.post("/api/add-property", async (req, res) => {
       normalize(mandal),
       normalize(address),
       normalize(district),
-      normalize(availability), // ⭐ FIXES ENUM ERROR
+      normalize(availability),
       normalize(description)
     ]);
 
-    res.status(200).json({ message: "Property saved successfully!" });
+    res.status(200).json({
+      message: "Property saved successfully!"
+    });
+
   } catch (err) {
     console.error("❌ Property Insert Error:", err);
-    res.status(500).json({ message: "Database insert error" });
+    res.status(500).json({
+      message: "Database insert error"
+    });
   }
 });
 
