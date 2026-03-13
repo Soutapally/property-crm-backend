@@ -266,8 +266,7 @@ app.post("/api/add-customer", async (req, res) => {
     const customerId = result.rows[0].customer_id;
 
     // ⭐ Insert property types
-    if (property_types && property_types.length > 0) {
-
+    if (Array.isArray(property_types) && property_types.length > 0){
       const values = property_types
         .map((_, i) => `($1,$${i + 2})`)
         .join(",");
@@ -314,31 +313,53 @@ app.post("/api/add-customer", async (req, res) => {
 //   }
 // });
 app.get("/api/customers", async (req, res) => {
+
   const sql = `
     SELECT 
-      customer_id,
-      name,
-      COALESCE(email, '') AS email,
-      phone,
-      COALESCE(phone_alt, '') AS phone_alt,
-      COALESCE(preferred_location, '') AS preferred_location,
-      COALESCE(property_type, '') AS property_type,
-      COALESCE(requirement_details, '') AS requirement_details,
-      budget_min,
-      budget_max,
-      lead_status,
-      created_at
-    FROM customers
-    ORDER BY customer_id DESC
+      c.customer_id,
+      c.name,
+      COALESCE(c.email,'') AS email,
+      c.phone,
+      COALESCE(c.phone_alt,'') AS phone_alt,
+      COALESCE(c.preferred_location,'') AS preferred_location,
+      COALESCE(c.requirement_details,'') AS requirement_details,
+      c.budget_min,
+      c.budget_max,
+      c.lead_status,
+      c.created_at,
+
+      COALESCE(
+        STRING_AGG(pt.type_name, ', ') 
+        FILTER (WHERE pt.type_name IS NOT NULL),
+        ''
+      ) AS property_types
+
+    FROM customers c
+
+    LEFT JOIN customer_property_types cpt
+      ON c.customer_id = cpt.customer_id
+
+    LEFT JOIN property_types pt
+      ON pt.type_id = cpt.type_id
+
+    GROUP BY c.customer_id
+
+    ORDER BY c.customer_id DESC
   `;
 
   try {
+
     const result = await db.query(sql);
+
     res.json(result.rows);
+
   } catch (err) {
+
     console.error(err);
     res.status(500).json({ message: "Fetch failed" });
+
   }
+
 });
 
 
@@ -394,7 +415,10 @@ app.get("/api/customer/:id", async (req, res) => {
       c.requirement_details,
       c.lead_status,
       c.created_at,
-      ARRAY_AGG(pt.type_id) AS property_types
+      COALESCE(
+        ARRAY_AGG(pt.type_id) FILTER (WHERE pt.type_id IS NOT NULL),
+        '{}'
+      ) AS property_types
     FROM customers c
     LEFT JOIN customer_property_types cpt
       ON c.customer_id = cpt.customer_id
@@ -418,6 +442,7 @@ app.get("/api/customer/:id", async (req, res) => {
     console.error(err);
     res.status(500).json({ message: "Fetch failed" });
   }
+
 });
 
 
@@ -506,6 +531,10 @@ app.put("/api/update-customer/:id", async (req, res) => {
     status
   } = req.body;
 
+  if (!name || !phone) {
+    return res.status(400).json({ message: "Name & Phone required" });
+  }
+
   const emailValue = email?.trim() || null;
   const phoneAltValue = phone_alt?.trim() || null;
 
@@ -525,7 +554,7 @@ app.put("/api/update-customer/:id", async (req, res) => {
 
   try {
 
-    await db.query(sql, [
+    const result = await db.query(sql, [
       name,
       phone,
       phoneAltValue,
@@ -538,6 +567,10 @@ app.put("/api/update-customer/:id", async (req, res) => {
       id
     ]);
 
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
     // ⭐ Remove old property types
     await db.query(
       `DELETE FROM customer_property_types WHERE customer_id=$1`,
@@ -545,7 +578,7 @@ app.put("/api/update-customer/:id", async (req, res) => {
     );
 
     // ⭐ Insert new property types
-    if (property_types && property_types.length > 0) {
+    if (Array.isArray(property_types) && property_types.length > 0) {
 
       const values = property_types
         .map((_, i) => `($1,$${i + 2})`)
@@ -557,14 +590,18 @@ app.put("/api/update-customer/:id", async (req, res) => {
       `;
 
       await db.query(mapSql, [id, ...property_types]);
+
     }
 
     res.json({ message: "Customer updated successfully" });
 
   } catch (err) {
-    console.error(err);
+
+    console.error("Update error:", err);
     res.status(500).json({ message: "Update failed" });
+
   }
+
 });
 
 // DELETE customer
