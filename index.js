@@ -3135,6 +3135,7 @@ app.get("/api/customers/:id/matched-properties", async (req, res) => {
 // });
 // GET CUSTOMERS WITH MATCHED PROPERTIES COUNT
 app.get("/api/customers-with-matches", async (req, res) => {
+
   const sql = `
     SELECT
       c.customer_id,
@@ -3144,7 +3145,6 @@ app.get("/api/customers-with-matches", async (req, res) => {
       c.budget_min,
       c.budget_max,
       c.preferred_location,
-      c.property_type,
       c.requirement_details,
       c.lead_status,
       c.created_at,
@@ -3152,32 +3152,57 @@ app.get("/api/customers-with-matches", async (req, res) => {
       (
         SELECT COUNT(*)
         FROM properties p
+
+        LEFT JOIN property_property_types ppt
+          ON p.property_id = ppt.property_id
+
+        LEFT JOIN property_types pt
+          ON ppt.type_id = pt.type_id
+
         WHERE
           p.availability = 'Available'
           AND (
+
             LOWER(p.mandal) = LOWER(c.preferred_location)
+
             OR LOWER(p.district) = LOWER(c.preferred_location)
+
             OR LOWER(p.address) LIKE '%' || LOWER(c.preferred_location) || '%'
-            OR LOWER(p.property_type) = LOWER(c.property_type)
+
+            OR LOWER(pt.type_name) = LOWER(c.property_type)
+
             OR LOWER(p.description) LIKE '%' || LOWER(c.requirement_details) || '%'
+
             OR p.price BETWEEN
               CAST(regexp_replace(c.budget_min, '[^0-9.]', '', 'g') AS NUMERIC)
               AND
               CAST(regexp_replace(c.budget_max, '[^0-9.]', '', 'g') AS NUMERIC)
+
           )
+
       ) AS matched_properties_count
 
     FROM customers c
+
     ORDER BY c.customer_id DESC
   `;
 
   try {
+
     const result = await db.query(sql);
+
     res.json(result.rows);
+
   } catch (err) {
+
     console.error("❌ Fetch failed:", err);
-    res.status(500).json({ message: "Database fetch error" });
+
+    res.status(500).json({
+      message: "Database fetch error"
+    });
+
   }
+
 });
 
 
